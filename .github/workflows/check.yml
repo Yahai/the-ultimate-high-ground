@@ -17,3 +17,7 @@ jobs:
         run: node tests/smoke.cjs
       - name: Exercise strategy model
         run: node tests/strategy.test.mjs
+      - name: Verify shared orbital geometry and mission passes
+        run: node tests/orbital.test.mjs
+      - name: Verify tasking, downlinks, and intelligence products
+        run: node tests/mission.test.mjs

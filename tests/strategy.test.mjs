@@ -6,7 +6,7 @@ assert.equal(campaignDateLabel(2),'Q1 2027');
 assert.equal(campaignDateLabel(5),'Q4 2027');
 assert.equal(campaignDateLabel(40),'Q3 2036');
 let s=createCampaign();
-assert.equal(s.version,2);
+assert.equal(s.version,3);
 assert.equal(s.turn,1);
 assert.equal(s.commercialCredits,2);
 assert(computeMetrics(s).coverage<25);
@@ -59,6 +59,6 @@ assert(trial.outcome,'Campaign should eventually have a win/loss determination')
 const migrated=createCampaign({version:1,turn:9,budget:900,programmes:{sat3:'funded'},researchTurn:{sat3:7},logs:[]});
 assert.equal(migrated.programmes.sat3,'research');assert.equal(migrated.budget,900);
 assert(!migrated.outcome);
-const copy=createCampaign({...s,version:2});assert.equal(copy.programmes.sat3,'deployed');
+const copy=createCampaign({...s,version:3});assert.equal(copy.programmes.sat3,'deployed');
 assert.equal(JSON.stringify(createCampaign()),JSON.stringify(createCampaign()),'New campaign deterministic');
 console.log('PASS: quarterly calendar, V1 migration, research pipeline, gated commissioning, recurring costs, independent intelligence and coverage, event decisions, full campaign outcome.');

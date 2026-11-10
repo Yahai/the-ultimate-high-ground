@@ -1,9 +1,10 @@
+import { planMission, MISSION_ASSETS, MISSION_REGIONS, MISSION_HORIZON_S, DAY_S } from './orbital.mjs';
 /** The Ultimate High Ground — deterministic, fictional strategic simulation.
  * This pure module contains no DOM, React, Three.js or military operational data.
  * All money values are game billions of naira; satellite/programme data are synthetic.
  */
 export const MAX_TURNS = 40;
-export const VERSION = 2;
+export const VERSION = 3;
 export const PROGRAMMES = Object.freeze({
   sat3: {name:'NigeriaSat-3 optical programme',research:4,researchCost:95,commissionCost:270,upkeep:18,coverage:22,autonomy:19,processing:9},
   sar: {name:'Nigeria SAR research programme',research:6,researchCost:145,commissionCost:340,upkeep:24,coverage:30,autonomy:25,processing:16},
@@ -49,22 +50,26 @@ export function createCampaign(legacy=null){
     groundLevel:1,groundHealth:85,groundReliability:80,researchCapacity:20,appropriation:115,
     commercialCredits:2,consecutiveShortfalls:0,geoExtension:false,launchFunded:false,
     pendingEvent:null,resolvedEvents:{},outcome:null,score:0,
+    missionEpochSeconds:0,missionQueue:[],missionHistory:[],dataProducts:[],nextMissionId:1,missionsCompleted:0,
     logs:[{turn:1,type:'success',text:'Q4 2026 baseline established. Build sovereign capability while maintaining public services.'},
           {turn:1,type:'info',text:'Satellite missions beyond verified operations are fictional future programmes.'}]};
   if(!legacy||typeof legacy!=='object')return c;
   // v1 migration is deliberately conservative: preserves spending, choices and the turn.
-  for(const k of ['turn','budget','bandwidth','support','integrity','groundLevel','groundHealth','groundReliability','researchCapacity','appropriation','commercialCredits','consecutiveShortfalls','geoExtension','launchFunded','pendingEvent','outcome']) {
+  for(const k of ['turn','budget','bandwidth','support','integrity','groundLevel','groundHealth','groundReliability','researchCapacity','appropriation','commercialCredits','consecutiveShortfalls','geoExtension','launchFunded','pendingEvent','outcome','missionEpochSeconds','nextMissionId','missionsCompleted']) {
     if(legacy[k]!==undefined)c[k]=legacy[k];
   }
   for(const k of ['threats','intel','fuel','progress','programmes','researchTurn','researchDelay','resolvedEvents']){
     if(legacy[k]&&typeof legacy[k]==='object'&&!Array.isArray(legacy[k]))c[k]={...c[k],...legacy[k]};
   }
   if(Array.isArray(legacy.logs))c.logs=legacy.logs.slice(0,60);
+  for(const name of ['missionQueue','missionHistory','dataProducts'])if(Array.isArray(legacy[name]))c[name]=legacy[name].slice(0,50);
+  if(!Number.isFinite(c.missionEpochSeconds)||c.missionEpochSeconds<0)c.missionEpochSeconds=(c.turn-1)*MISSION_HORIZON_S;
   c.turn=clamp(Math.trunc(c.turn),1,MAX_TURNS);
   c.budget=money(Math.max(0,Number(c.budget)||0));
   // A completed v1 campaign is not an automatic victory in v2.
   if(Number(legacy.version)!==VERSION){
     c.outcome=null;c.pendingEvent=null;c.consecutiveShortfalls=0;
+    c.missionEpochSeconds=(c.turn-1)*MISSION_HORIZON_S;
     for(const id of Object.keys(PROGRAMMES)) if(c.programmes[id]==='funded')c.programmes[id]='research';
   }
   c.version=VERSION;c.maxTurns=MAX_TURNS;
@@ -88,19 +93,24 @@ export function computeMetrics(s){
   const groundDependency=groundFactor*(.6+.4*processingFactor);
   const partnerBonus=Math.min(8,s.commercialCredits*2);
   const base=13+partnerBonus+Math.min(13,s.groundLevel*3);
-  const coverage=clamp((base+(optical?29:0)+(radar?33:0)+(ais?12:0))*groundDependency);
-  const regionalCoverage={
-    hadin:clamp(coverage*(radar?1.07:0.92)),
-    fansan:clamp(coverage*(optical?1.04:0.94)),
-    savannah:clamp(coverage*(radar?1.02:1.00)),
-    delta:clamp(coverage*(ais?1.24:0.80))
-  };
+  // Capacity is a potential to observe; delivered and analysed data is a separate outcome.
+  const potentialCoverage=clamp((base+(optical?29:0)+(radar?33:0)+(ais?12:0))*groundDependency);
+  const recent=(s.dataProducts||[]).filter(p=>p.analysedTurn&&s.turn-p.analysedTurn<=4);
+  const regionalCoverage=Object.fromEntries(THEATRE_IDS.map(id=>{
+    const availability=id==='delta'?(ais?1.2:.76):(id==='hadin'?(radar?1.08:.9):1);
+    const products=recent.filter(p=>p.regionId===id);
+    const produced=products.reduce((sum,p)=>sum+(p.quality||65)/9,0);
+    return [id,clamp(potentialCoverage*.72*availability+Math.min(38,produced))];
+  }));
+  const coverage=Object.values(regionalCoverage).reduce((a,b)=>a+b,0)/THEATRE_IDS.length;
+  const unprocessed=(s.dataProducts||[]).filter(p=>!p.analysedTurn).length;
+  const delivered=(s.missionHistory||[]).filter(p=>p.status==='delivered').length;
   const sovereignty=clamp(18+(optical?23:0)+(radar?28:0)+(ais?15:0)+s.researchCapacity*.16+s.groundLevel*2+(s.launchFunded?3:0));
   const resilience=clamp((s.groundReliability*.55+s.integrity*.45)*(.65+.35*groundFactor));
   const meanRisk=Object.values(s.threats).reduce((a,b)=>a+b,0)/4;
   const score=Math.round(clamp(.28*coverage+.21*sovereignty+.18*resilience+.16*s.support+.17*(100-meanRisk)));
   const upkeep=22+Math.max(0,s.groundLevel-1)*7+(s.geoExtension?-2:0)+deployed.reduce((a,id)=>a+PROGRAMMES[id].upkeep,0);
-  return {coverage,regionalCoverage,sovereignty,resilience,score,upkeep,meanRisk,deployed,processingFactor,groundFactor};
+  return {coverage,potentialCoverage,regionalCoverage,sovereignty,resilience,score,upkeep,meanRisk,deployed,processingFactor,groundFactor,unprocessed,delivered};
 }
 export function assessCampaign(s){
   const m=computeMetrics(s);
@@ -113,6 +123,78 @@ export function assessCampaign(s){
 const error=(state,message)=>({state,message,error:true});
 function log(s,text,type='info'){s.logs=[{turn:s.turn,text,type},...(s.logs||[])].slice(0,60);}
 const deduct=(s,cost)=>{if(s.budget<cost)return false;s.budget=money(s.budget-cost);return true;};
+/** Task and process synthetic observation products from physically modelled future orbits. */
+export function queueMission(state,assetId,regionId,observationEpochSeconds=state.missionEpochSeconds){
+  if(state.outcome)return error(state,'The campaign is complete.');
+  if(state.pendingEvent)return error(state,'Resolve the strategic decision before submitting mission requests.');
+  if(!MISSION_ASSETS[assetId]||!MISSION_REGIONS[regionId])return error(state,'Select an eligible future mission and exercise region.');
+  if(state.programmes[assetId]!=='deployed')return error(state,'Commission the spacecraft before assigning observations.');
+  if((state.missionQueue||[]).length>=Math.min(4,state.groundLevel+1))return error(state,'Ground scheduling capacity reached for this quarter. Upgrade the network or advance the turn.');
+  const demand=MISSION_ASSETS[assetId].processing;
+  if(state.bandwidth<demand)return error(state,`Mission requires ${demand} GB/s of scenario processing capacity.`);
+  if(state.groundHealth<35)return error(state,'Receiving network is too degraded to accept new satellite tasking.');
+  // Restrict mission planning to the active quarter's representative fourteen-day window.
+  const start=Math.max(state.missionEpochSeconds,Math.min(state.missionEpochSeconds+DAY_S*2,Number(observationEpochSeconds)||state.missionEpochSeconds));
+  const plan=planMission(assetId,regionId,start,state.groundLevel);
+  if(plan.error)return error(state,plan.error);
+  if(!plan.receiverAvailable)return error(state,'No receiving opportunity within twelve hours of the observation. Upgrade the ground network.');
+  const cost=assetId==='sar'?12:assetId==='sat3'?8:6;
+  const s=clone(state);if(!deduct(s,cost))return error(state,'Not enough budget for this observation request.');
+  const task={id:`MSN-${String(s.nextMissionId++).padStart(4,'0')}`,assetId,regionId,
+    placedTurn:s.turn,status:'queued',cost,passSeconds:plan.pass.peakSeconds,
+    downlinkSeconds:plan.pass.downlink.timeSeconds,receiverId:plan.pass.downlink.receiverId,
+    receiverName:plan.receiver,closestKm:plan.closestKm,product:plan.product,processing:plan.processing};
+  s.missionQueue.push(task);
+  log(s,`${task.id}: ${plan.product} task submitted for ${MISSION_REGIONS[regionId].short}; geometric pass and downlink reserved. ₦${cost}B.`,'success');
+  return {state:s,message:`${task.id} queued · pass in ${Math.round(plan.hoursUntilPass)} model hours · ${plan.receiver}.`,error:false};
+}
+function processMissionQueue(s){
+  const queue=s.missionQueue||[],completed=[];
+  let downlinks=0;
+  const maxDownlinks=Math.min(4,Math.max(1,s.groundLevel));
+  for(const original of queue){
+    const task={...original,completedTurn:s.turn};
+    let failure=null;
+    if(s.programmes[task.assetId]!=='deployed')failure='spacecraft unavailable';
+    else if(!task.receiverId||s.groundHealth<40||s.groundReliability<35)failure='ground reception failed';
+    else if(s.bandwidth<task.processing)failure='processing capacity unavailable';
+    else if(downlinks>=maxDownlinks)failure='receiving network oversubscribed';
+    else if(task.assetId==='sat3'){
+      // Deterministic fictional weather; radar/AIS are not affected by optical cloud cover.
+      const weather=Math.abs(Math.sin(task.passSeconds*.000032+THEATRE_IDS.indexOf(task.regionId)*1.63));
+      if(weather>.84)failure='optical scene cloud-obscured';
+    }
+    if(failure){task.status='missed';task.reason=failure;log(s,`${task.id}: no usable observation — ${failure}.`,'warning');}
+    else{
+      task.status='delivered';downlinks++;
+      const quality=clamp(Math.round(90-task.closestKm/(MISSION_ASSETS[task.assetId]?.footprintKm||400)*30),45,96);
+      s.dataProducts.unshift({id:task.id,assetId:task.assetId,regionId:task.regionId,quality,
+        collectedTurn:s.turn,receiverName:task.receiverName,analysedTurn:null,product:task.product});
+      s.missionsCompleted=(s.missionsCompleted||0)+1;
+      log(s,`${task.id}: ${task.product} product received at ${task.receiverName}. Awaiting analytical processing.`,'success');
+    }
+    completed.push(task);
+  }
+  s.missionQueue=[];
+  s.missionHistory=[...completed.reverse(),...(s.missionHistory||[])].slice(0,50);
+  s.dataProducts=s.dataProducts.slice(0,35);
+}
+export function analyseProduct(state,productId){
+  if(state.outcome)return error(state,'The campaign is complete.');
+  if(state.pendingEvent)return error(state,'Resolve the strategic event before processing imagery.');
+  const product=(state.dataProducts||[]).find(p=>p.id===productId);
+  if(!product||product.analysedTurn)return error(state,'Select an unprocessed observation product.');
+  if(state.bandwidth<(MISSION_ASSETS[product.assetId]?.processing||15))return error(state,'Insufficient analysis-processing capacity.');
+  if(state.groundHealth<35)return error(state,'Ground data services are unavailable.');
+  const s=clone(state),cost=9;
+  if(!deduct(s,cost))return error(state,'Insufficient funds for imagery processing.');
+  const p=s.dataProducts.find(p=>p.id===productId);
+  p.analysedTurn=s.turn;
+  const confidenceGain=Math.round(9+p.quality/9);
+  s.intel[p.regionId]=clamp(s.intel[p.regionId]+confidenceGain);
+  log(s,`${p.id}: ${p.product} product analysed for ${MISSION_REGIONS[p.regionId].short}. Confidence +${confidenceGain}, no automatic threat reduction.`,'success');
+  return {state:s,message:`${p.id} analysed · regional confidence +${confidenceGain}.`,error:false};
+}
 export function applyDirective(state,action,id){
   if(state.outcome)return error(state,'The campaign is over. Start a new campaign.');
   if(state.pendingEvent)return error(state,'Resolve the urgent strategic event before authorising new directives.');
@@ -176,10 +258,7 @@ export function applyDirective(state,action,id){
       cost=35;if(!deduct(s,cost))return error(state,'Insufficient budget.');
       s.progress[id]=clamp(s.progress[id]+(10+Math.round(computeMetrics(s).coverage/10)));
       message='Synthetic training anomaly assessment advanced using available coverage.';break;}
-    case 'scan':{
-      if(s.programmes[id]!=='deployed')return error(state,'Commission the spacecraft before it can perform sensor tasks.');
-      cost=20;if(!deduct(s,cost))return error(state,'Insufficient budget.');
-      s.commercialCredits+=1;message='Satellite observation product added to available civilian analysis capacity.';break;}
+    case 'scan':return error(state,'Use Mission Control to task a commissioned spacecraft, receive data, and process the product.');
     default:return error(state,'Unknown directive: '+action);
   }
   log(s,`${message} (₦${cost}B scenario expenditure)`, 'success');
@@ -191,6 +270,8 @@ export function advanceCampaign(state){
   if(state.pendingEvent)return error(state,'Resolve the current strategic event before advancing.');
   if(state.turn>=MAX_TURNS)return error(state,'Campaign timeline finished.');
   const s=clone(state);s.turn++;
+  processMissionQueue(s);
+  s.missionEpochSeconds=(s.turn-1)*MISSION_HORIZON_S;
   const m=computeMetrics(s);
   const appropriation=s.turn%4===1?s.appropriation:0;
   const cost=m.upkeep+Math.max(0,Math.round((100-s.groundHealth)/13));

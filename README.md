@@ -22,7 +22,9 @@ Open the deployed `index.html` on GitHub Pages. Click **Enter War Room** (or **C
 - **Quarterly strategic turns:** the campaign runs from Q4 2026 through Q3 2036. Choose between domestic R&D, future spacecraft procurement, contracted imagery, network upgrades and maintenance.
 - **Real dependencies:** R&D takes multiple quarters, future satellites require ground-network capacity before commissioning, and every commissioned spacecraft adds ongoing operating costs.
 - **Strategic events:** mandatory fictional emergencies demand a choice before the next turn; decisions affect confidence, funding, reliability and research.
-- **Coverage vs. threats:** modeled Earth-observation coverage is distinct from regional threat pressure. Imagery improves analysis confidence; funding separate interventions is required to change pressure.
+- **Mission Control (v0.5):** commission an optical, radar or maritime spacecraft; open **MISSIONS**; choose an exercise region and see the next 14 days of physically propagated orbital pass opportunities. Queue observation requests, advance a strategic quarter, and see downlinked data products. Analyse each delivered product for intelligence confidence and short-lived coverage benefits.
+- **Ground constraints:** a physically eligible satellite pass still needs a geometrically visible receiving opportunity, spare network capacity, and functioning infrastructure. Optical acquisitions can fail due to synthetic cloud conditions; SAR and AIS avoid optical cloud failures.
+- **Coverage vs. threats:** regional operational coverage depends on modelled capacity **and recent analysed products**, not on threat-pressure scores. An observation never directly neutralizes a threat.
 
 Your campaign autosaves in **this browser's localStorage** and returns when you revisit from the same browser profile. It does **not** sync across devices. Removing website data resets the local save.
 
@@ -43,11 +45,14 @@ Requires Node.js 18+ (no npm installation needed):
 ```bash
 node --check assets/game.js
 node --check assets/strategy.mjs
+node --check assets/orbital.mjs
 node tests/smoke.cjs
+node tests/orbital.test.mjs
 node tests/strategy.test.mjs
+node tests/mission.test.mjs
 ```
 
-These check syntax, deployment assets, GEO Earth-fixed behavior, LEO movement, and non-horizontal tabletop orbital geometry. They do **not** replace real-browser functional testing or performance profiling.
+These check syntax, deployment assets, GEO station keeping, LEO propagation, mission-pass forecasts, receiving visibility, tasking constraints, downlink results and data-product analysis. They do **not** replace real-browser functional testing or performance profiling.
 
 ## Publish on GitHub Pages
 
@@ -64,8 +69,9 @@ All local links are relative, so deployment works from a project subpath (`/the-
 ```text
 index.html                HTML entry point and import map
 assets/
-  game.js                 React strategy UI, Three.js rendering & orbital simulation
-  strategy.mjs            Pure quarterly economy, R&D, coverage, event choices and victory logic
+  game.js                 React strategy UI and Three.js rendering, using shared orbital state
+  orbital.mjs             Pure orbital propagator, pass forecasting and ground visibility
+  strategy.mjs            Quarterly economy, R&D, mission tasking, observation products, and victory logic
   site.css                App styles and responsive layouts
   war-room.jpg            Original generated splash artwork
   satellite-hero.jpg      Original generated spacecraft artwork
@@ -74,8 +80,10 @@ assets/
 .nojekyll                 Publish static files without Jekyll processing
 .github/workflows/check.yml
                           Automated syntax and orbital tests
-tests/smoke.cjs           Dependency-free orbital regression checks
-tests/strategy.test.mjs   Pure simulation regression tests
+tests/smoke.cjs           Static deployment and integration checks
+tests/orbital.test.mjs    Propagation, geometric passes and receiver availability
+tests/strategy.test.mjs   Quarterly economy and campaign regression tests
+tests/mission.test.mjs    End-to-end mission planning and intelligence production
 ```
 
 ### Technical notes
@@ -86,12 +94,13 @@ tests/strategy.test.mjs   Pure simulation regression tests
 - Altitudes and distances are **visually exaggerated/compressed** for tabletop legibility. These are not scale models of Earth-orbit separation.
 - Future spacecraft are fictional / proposed until unlocked by the player. Their orbital elements are gameplay assumptions, not current ephemerides.
 - Procedural terrain is stylized; it is not a surveyed elevation or high-resolution geospatial dataset.
+- Mission forecasts use invented circular orbital elements and approximate footprints, with a 14-day representative observation window per quarterly turn. The geometry does **not** use verified orbital elements, real weather, ground-station schedules or targeting data.
 - The 2026 baseline references are included in the game's Source Notes / dossiers and should be reviewed before future releases.
 
 ## Project status
 
-Prototype v0.4: corrected orbital simulation, modular strategy economy, quarterly project pipeline, recurring operations, ground-network gating, separate coverage and threat-pressure metrics, deterministic strategic events, scoring, victory/defeat, V1 save migration and GitHub Pages-ready source.
+**Prototype v0.5:** Shared physical orbital model between both 3D views and mission planning; spacecraft pass forecasts over broad fictional exercise regions; geocentric ground-receiver visibility; queued mission requests; capacity- and health-constrained downlinks; optical cloud scenarios; acquired products; subsequent intelligence analysis; capability and actual delivered observations as distinct coverage measurements; automatic V2 → V3 local save migration; regression tests and GitHub Pages deployment.
 
-Planned next: reproducible browser integration tests, first-turn tutorial, modular orbital physics, improved accessibility, orbital speed selector, audited public geographic data, campaign balancing, and performance profiling.
+**Next:** browser integration testing, mission tutorial, richer scene-to-planner map markers, configurable pass window and mission priority, confidence decay/decision effects, quality settings and verified geography.
 
 **Not affiliated with or endorsed by Nigeria's Defence Space Administration, NASRDA, NIGCOMSAT, or the Armed Forces.**
