@@ -26,6 +26,9 @@ const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.webmanifest')
 assert.equal(manifest.orientation,'landscape');
 assert.equal(manifest.display,'fullscreen');
 assert(js.includes('event-decision-overlay'), 'Event decision UI missing');
+assert(js.includes('project-portfolio'), 'Strategic portfolio UI missing');
+assert(!js.includes('SCENARIO INVESTMENT BUDGET'), 'Outdated simulation banner still in primary UI');
+assert(!js.includes('SECURE SIMULATION ENVIRONMENT'), 'Outdated simulation footer still in primary UI');
 assert(!html.includes('data:image/'), 'Unexpected inline imagery');
 assert(!css.includes('data:image/'), 'Image extraction incomplete');
 assert(!js.includes('data:image/'), 'Image extraction incomplete');

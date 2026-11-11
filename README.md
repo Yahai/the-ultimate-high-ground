@@ -25,7 +25,11 @@ Open the deployed `index.html` on GitHub Pages. Click **Enter War Room** (or **C
 - **Mission Control (v0.6):** commission an optical, radar or maritime spacecraft; open **MISSIONS**; choose an exercise region and see the next 14 days of physically propagated orbital pass opportunities. Queue observation requests, advance a strategic quarter, and see downlinked data products. Analyse each delivered product for intelligence confidence and short-lived coverage benefits.
 - **Ground constraints:** a physically eligible satellite pass still needs a geometrically visible receiving opportunity, spare network capacity, and functioning infrastructure. Optical acquisitions can fail due to synthetic cloud conditions; SAR and AIS avoid optical cloud failures.
 - **Mission replays (v0.6):** preview an eligible observation from Mission Control, with orbital playback following a simulated observation and downlink window. The receiving-network panel displays hypothetical station capabilities, congestion and health.
-- **Operation First Light (v0.7):** A guided, fictional civilian flood-response first mission teaches selecting the Niger Delta, analysing partner imagery, investing in resilience and choosing a national emergency response. The outcome grades preparedness and response, and updates fictional support and risk. Players can skip, hide or revisit the tutorial. Existing v0.6 saves retain progress and are not forced into the new introduction.
+- **Strategic portfolio (v0.8):** Fund up to two of three long-range national projects concurrently. Projects spend capital immediately, take multiple quarters to complete, then incur recurring upkeep. An emergency-data exchange improves resilience and incident decisions; a data-fusion backbone adds processing and reception capacity; an integration academy reduces future spacecraft research times.
+- **Milestone grants:** Deliver infrastructure and combine it with real campaign achievements to earn three one-time programme grants. New crisis events diversify the mid-to-late-game turn sequence.
+- **UI copy:** Repetitive disclaimer labels were removed from the playable HUD. A single independent-game disclosure and source notes remain in the information screens.
+- **Operation First Light (v0.7):** new campaigns open with a guided fictional civilian flood-response exercise. Inspect Niger Delta, use an existing partner imagery credit, purchase a civilian resilience package, advance to Q1 2027, and choose a national response. The debrief grades preparedness and the response choice, and changes simulated support and risk. The tutorial can be hidden or skipped without preventing free play. **Existing v0.6 saves automatically bypass the tutorial** and retain pending strategic decisions; starting a new campaign is the opt-in route to First Light.
+- **Replayability:** the completed First Light debrief remains accessible after reload; replaying it starts a brand-new campaign and requests confirmation.
 - **Mobile landscape cockpit:** phone gameplay offers touch orbit/zoom, a compact bottom control dock, device rotation guidance and a fullscreen toggle. Where supported, entering the game requests browser fullscreen and landscape orientation; on iPhone/Safari the browser may not allow forced rotation or fullscreen. The portrait fallback is optional.
 - **Home-screen app:** Chrome/Android can add the page to the home screen; the app manifest requests landscape/fullscreen on launch. This static app still needs an internet connection for its CDN-hosted libraries.
 - **Coverage vs. threats:** regional operational coverage depends on modelled capacity **and recent analysed products**, not on threat-pressure scores. An observation never directly neutralizes a threat.
@@ -56,7 +60,8 @@ node tests/strategy.test.mjs
 node tests/mission.test.mjs
 node tests/replay.test.mjs
 node tests/first_light.test.mjs
-python tests/browser_e2e.py    # Actual Chromium playthrough; requires CDN access
+node tests/portfolio.test.mjs
+python tests/browser_e2e.py    # Chromium full-game E2E; requires CDN connectivity
 python tests/mobile_layout.py  # optional: requires playwright + Chromium
 ```
 
@@ -92,6 +97,8 @@ tests/smoke.cjs           Static deployment and integration checks
 tests/orbital.test.mjs    Propagation, geometric passes and receiver availability
 tests/strategy.test.mjs   Quarterly economy and campaign regression tests
 tests/mission.test.mjs    End-to-end mission planning and intelligence production
+tests/first_light.test.mjs   Opening scenario and save migration
+tests/browser_e2e.py       Full browser First Light playthrough
 ```
 
 ### Technical notes
@@ -107,14 +114,20 @@ tests/mission.test.mjs    End-to-end mission planning and intelligence productio
 
 ## Project status
 
-**Prototype v0.7:** Shared physical orbital model between both 3D views and mission planning; spacecraft pass forecasts over broad fictional exercise regions; geocentric ground-receiver visibility; queued mission requests; capacity- and health-constrained downlinks; optical cloud scenarios; acquired products; subsequent intelligence analysis; capability and actual delivered observations as distinct coverage measurements; automatic V2 → V3 local save migration; regression tests and GitHub Pages deployment.
+**Prototype v0.8:** Shared physical orbital model between both 3D views and mission planning; spacecraft pass forecasts over broad fictional exercise regions; geocentric ground-receiver visibility; queued mission requests; capacity- and health-constrained downlinks; optical cloud scenarios; acquired products; subsequent intelligence analysis; capability and actual delivered observations as distinct coverage measurements; automatic V2 → V3 local save migration; regression tests and GitHub Pages deployment.
 
-**Next:** review actual browser E2E results, improve tutorial clarity, optimize WebGL startup and campaign pacing, and add data-queue mechanics.
+**Next:** reconcile browser-test findings, improve first-session choice explanations, optimize frame-time and WebGL startup, then deepen mission data queues and campaign pacing.
 
-**Automated checks:** Unit/syntax tests plus a Playwright mobile CSS layout check at 844×390, 667×375 and 390×844. The mobile test isolates CSS from the game runtime because local browser navigation is blocked in the current development environment. It does not certify full-screen/orientation permissions on particular devices. GitHub Actions validates each release.
+**Automated checks:** Unit/syntax tests, First Light gameplay regression, a full Chromium introduction playthrough on GitHub Actions, plus a Playwright mobile CSS layout check at 844×390, 667×375 and 390×844. The mobile test isolates CSS from the game runtime because local browser navigation is blocked in the current development environment. It does not certify full-screen/orientation permissions on particular devices. GitHub Actions validates each release.
 
 **Not affiliated with or endorsed by Nigeria's Defence Space Administration, NASRDA, NIGCOMSAT, or the Armed Forces.**
 
-## Release v0.7
+## Release v0.8 — Strategic Depth
 
-Operation First Light introduction, resumable debrief, V3-to-V4 save migration and browser playthrough tests. Fictional civilian exercise only. Build and test details are available in GitHub Actions. **Browser E2E must pass before merging to main.**
+**Design intent:** Long-term capital commitments compete with spacecraft commissioning and routine maintenance. Investment returns happen through observable model changes, not instant score inflation. New projects have construction lead times, permanent upkeep and mechanical synergies with crisis choices, orbital data operations and R&D qualification. Project funding and one-time milestone awards are saved across sessions.
+
+**User-facing copy:** This is clearly a strategy game; avoid repetitive simulation/legal warnings in the interface. Keep the independent-game disclosure and accuracy qualifications in the introductory information and Sources panel. Satellite status remains explicit (in service vs planned vs concept) so the game does not imply nonexistent spacecraft are active.
+
+**Tests:** Includes a strategic portfolio regression suite, First Light campaign, orbital geometry, mission processing, mobile layout and browser playthrough. The browser test also validates that funding an emergency-data project costs the correct amount and persists in the campaign save.
+
+**Next:** Live play balancing, mission and network backlog realism, event consequences conditioned by progress, better mobile discovery of investment portfolio, and simplified asset descriptions.

@@ -4,39 +4,76 @@ import { planMission, MISSION_ASSETS, MISSION_REGIONS, MISSION_HORIZON_S, DAY_S 
  * All money values are game billions of naira; satellite/programme data are synthetic.
  */
 export const MAX_TURNS = 40;
-export const VERSION = 4;
+export const VERSION = 5;
 export const PROGRAMMES = Object.freeze({
   sat3: {name:'NigeriaSat-3 optical programme',research:4,researchCost:95,commissionCost:270,upkeep:18,coverage:22,autonomy:19,processing:9},
   sar: {name:'Nigeria SAR research programme',research:6,researchCost:145,commissionCost:340,upkeep:24,coverage:30,autonomy:25,processing:16},
   ais: {name:'Maritime AIS smallsat concept',research:3,researchCost:70,commissionCost:165,upkeep:10,coverage:13,autonomy:12,processing:6}
 });
+export const PROJECTS=Object.freeze({
+  exchange:{name:'Emergency Data Exchange',cost:160,quarters:2,upkeep:6,icon:'shield-check',summary:'Faster crisis coordination and stronger communications resilience.',impact:'Ground reliability +10 · response decisions improve'},
+  fusion:{name:'National Data Fusion Backbone',cost:205,quarters:3,upkeep:8,icon:'database',summary:'Increase imagery processing and eliminate downlink bottlenecks.',impact:'Processing +30 · +1 receiving slot · cheaper analysis'},
+  academy:{name:'Space Systems Integration Academy',cost:145,quarters:3,upkeep:5,icon:'graduation-cap',summary:'Develop specialists who accelerate future spacecraft qualification.',impact:'Research +18 · spacecraft research accelerated'}
+});
+export const MILESTONES=Object.freeze([
+ {id:'resilience',name:'Resilient services',description:'Complete Emergency Data Exchange with 75% ground reliability.',reward:40,support:2},
+ {id:'data',name:'Information advantage',description:'Complete Data Fusion Backbone and receive one satellite product.',reward:55,support:2},
+ {id:'innovation',name:'Engineering independence',description:'Complete the Academy and qualify one spacecraft design.',reward:65,support:3}
+]);
 export const THEATRE_IDS=['hadin','fansan','savannah','delta'];
 export const EVENTS=Object.freeze([
-  {id:'flood',title:'Seasonal flood emergency',brief:'A fictional flood-monitoring request requires verified imagery and rapid processing. How should the programme respond?',options:[
+  {id:'flood',title:'Seasonal flood emergency',brief:'A flood-monitoring request requires verified imagery and rapid processing. How should the programme respond?',options:[
     {id:'contract',label:'Purchase rapid-response partner imagery',cost:45,confidence:12,support:3,integrity:1,deltaRisk:-2,requires:'budget',description:'Fast information, higher immediate cost'},
     {id:'coordinate',label:'Reprioritise existing ground analysis',cost:12,bandwidth:-8,confidence:6,support:1,description:'Lower cost, reduced spare processing capacity'},
     {id:'defer',label:'Delay the assessment',cost:0,confidence:-8,support:-5,deltaRisk:4,description:'No expenditure, public confidence declines'}]},
-  {id:'outage',title:'Satellite communications disruption',brief:'A simulated service anomaly threatens nationally contracted communications availability.',options:[
+  {id:'outage',title:'Satellite communications disruption',brief:'A service anomaly threatens nationally contracted communications availability.',options:[
     {id:'redundancy',label:'Activate redundant capacity contracts',cost:65,integrity:3,support:2,reliability:12,description:'Expensive but protects the network'},
     {id:'repair',label:'Run emergency resilience maintenance',cost:24,reliability:6,integrity:1,description:'More economical partial restoration'},
     {id:'accept',label:'Accept degraded service',cost:0,reliability:-12,integrity:-5,support:-2,description:'No cash outlay; operational resilience deteriorates'}]},
-  {id:'research',title:'Unexpected research opportunity',brief:'A university partnership offers a fictional component-testing programme at subsidised cost.',options:[
+  {id:'research',title:'Unexpected research opportunity',brief:'A university partnership offers a component-testing programme at subsidised cost.',options:[
     {id:'invest',label:'Support the research partnership',cost:40,research:14,autonomy:4,description:'Strengthens domestic engineering expertise'},
     {id:'pilot',label:'Fund a limited pilot',cost:15,research:5,description:'Smaller learning benefit'},
     {id:'pass',label:'Decline this opportunity',cost:0,description:'Preserves the budget'}]},
-  {id:'debris',title:'Orbital debris advisory',brief:'A synthetic conjunction-risk warning affects future spacecraft service planning. No real ephemerides are used.',options:[
+  {id:'debris',title:'Orbital debris advisory',brief:'A conjunction-risk warning affects future spacecraft service planning.',options:[
     {id:'monitor',label:'Fund independent conjunction analysis',cost:30,integrity:2,reliability:5,research:3,description:'Improves planning and risk awareness'},
     {id:'partners',label:'Use external tracking partnerships',cost:12,integrity:1,reliability:2,description:'Limited resilience, lower cost'},
-    {id:'ignore',label:'No additional monitoring',cost:0,integrity:-3,reliability:-5,description:'Accept exposure in the simulation'}]},
-  {id:'budget',title:'Annual fiscal review',brief:'Parliamentary priorities are competing with the fictional national space programme. Your response will affect future appropriations.',options:[
+    {id:'ignore',label:'No additional monitoring',cost:0,integrity:-3,reliability:-5,description:'Accept exposure '}]},
+  {id:'budget',title:'Annual fiscal review',brief:'Parliamentary priorities are competing with the national space programme. Your response will affect future appropriations.',options:[
     {id:'audit',label:'Demonstrate verified civilian benefits',cost:25,support:3,integrity:2,appropriation:25,description:'Higher future grants, but costs effort'},
     {id:'protect',label:'Protect current projects',cost:0,support:-2,appropriation:0,description:'No immediate expense, weaker public case'},
     {id:'cut',label:'Accept a reduced investment portfolio',cost:0,appropriation:-30,support:1,description:'Maintains public goodwill but loses future revenue'}]},
-  {id:'supplier',title:'Space systems procurement delay',brief:'A simulated supply-chain setback threatens delivery schedules for developing spacecraft.',options:[
+  {id:'supplier',title:'Space systems procurement delay',brief:'A supply-chain setback threatens delivery schedules for developing spacecraft.',options:[
     {id:'alternate',label:'Pay for qualified alternate suppliers',cost:55,research:2,description:'Avoids the delay with expensive procurement'},
     {id:'delay',label:'Accept a one-quarter schedule slip',cost:0,delay:1,description:'Budget preserved, programme completion postponed'},
-    {id:'localise',label:'Invest in domestic integration skills',cost:35,research:8,autonomy:3,description:'Capacity benefit but does not eliminate the delay'}]}
+    {id:'localise',label:'Invest in domestic integration skills',cost:35,research:8,autonomy:3,description:'Capacity benefit but does not eliminate the delay'}]},
+  {id:'coast',title:'Maritime service expansion',brief:'Port authorities request wider vessel-pattern monitoring and more reliable coastal communications. Which service should take priority?',options:[
+    {id:'expand',label:'Expand coastal data access',cost:52,confidence:6,deltaRisk:-3,support:2,description:'Improves coastal awareness at high cost'},
+    {id:'pilot',label:'Run a targeted harbour pilot',cost:19,confidence:3,deltaRisk:-1,description:'Focused results without a national commitment'},
+    {id:'postpone',label:'Postpone the contract',cost:0,support:-2,deltaRisk:3,description:'No cost now; service gaps grow'}]},
+  {id:'backlog',title:'Processing backlog',brief:'A surge of Earth-observation data arrives as ground infrastructure approaches peak capacity.',options:[
+    {id:'automate',label:'Fund data-processing automation',cost:55,bandwidth:14,reliability:2,description:'Permanent throughput boost, sizeable cost'},
+    {id:'triage',label:'Prioritise the most urgent products',cost:12,confidence:3,bandwidth:3,description:'Immediate insight with less capacity gain'},
+    {id:'ignore',label:'Maintain the existing queue',cost:0,reliability:-5,support:-2,description:'Preserves cash but slows decisions'}]}
 ]);
+export function milestoneStatus(s){
+  return MILESTONES.map(m=>({ ...m,
+    earned:!!s.milestones?.[m.id],
+    ready:m.id==='resilience'?s.projects?.exchange?.status==='complete'&&s.groundReliability>=75
+      :m.id==='data'?s.projects?.fusion?.status==='complete'&&s.missionsCompleted>=1
+      :s.projects?.academy?.status==='complete'&&Object.values(s.programmes||{}).some(x=>x==='ready'||x==='deployed') }));
+}
+function awardMilestones(s){
+  for(const item of milestoneStatus(s)){
+    if(item.earned||!item.ready)continue;
+    s.milestones[item.id]=true;
+    s.budget=money(s.budget+item.reward);
+    s.support=clamp(s.support+item.support);
+    log(s,`MILESTONE: ${item.name}. ₦${item.reward}B programme grant earned; public support +${item.support}.`,'success');
+  }
+}
+export function projectRemaining(s,id){
+  const p=s.projects?.[id];return p?.status==='active'?Math.max(0,p.finishTurn-s.turn):0;
+}
 const clamp=(v,a=0,b=100)=>Math.max(a,Math.min(b,Number.isFinite(v)?v:a));
 const money=n=>Math.round(n*10)/10;
 const clone=s=>JSON.parse(JSON.stringify(s));
@@ -48,18 +85,18 @@ export function createCampaign(legacy=null){
     fuel:{geo:88,sat3:100,sar:100,ais:100},
     progress:{a17:28,m04:52,j11:15},programmes:stageDefaults(),researchTurn:{},researchDelay:{},
     groundLevel:1,groundHealth:85,groundReliability:80,researchCapacity:20,appropriation:115,
-    commercialCredits:2,consecutiveShortfalls:0,geoExtension:false,launchFunded:false,
+    commercialCredits:2,consecutiveShortfalls:0,geoExtension:false,launchFunded:false,projects:{},milestones:{},
     pendingEvent:null,resolvedEvents:{},outcome:null,score:0,
     firstLight:{status:'active',inspected:false,imagery:false,resilience:false,outcome:null,completedTurn:null,choice:null,score:null},
     missionEpochSeconds:0,missionQueue:[],missionHistory:[],dataProducts:[],nextMissionId:1,missionsCompleted:0,
     logs:[{turn:1,type:'success',text:'Q4 2026 baseline established. Build sovereign capability while maintaining public services.'},
-          {turn:1,type:'info',text:'Satellite missions beyond verified operations are fictional future programmes.'}]};
+          {turn:1,type:'info',text:'The frontier is yours to build. Choose your first long-term investment.'}]};
   if(!legacy||typeof legacy!=='object')return c;
   // v1 migration is deliberately conservative: preserves spending, choices and the turn.
   for(const k of ['turn','budget','bandwidth','support','integrity','groundLevel','groundHealth','groundReliability','researchCapacity','appropriation','commercialCredits','consecutiveShortfalls','geoExtension','launchFunded','pendingEvent','outcome','missionEpochSeconds','nextMissionId','missionsCompleted']) {
     if(legacy[k]!==undefined)c[k]=legacy[k];
   }
-  for(const k of ['threats','intel','fuel','progress','programmes','researchTurn','researchDelay','resolvedEvents']){
+  for(const k of ['threats','intel','fuel','progress','programmes','researchTurn','researchDelay','resolvedEvents','projects','milestones']){
     if(legacy[k]&&typeof legacy[k]==='object'&&!Array.isArray(legacy[k]))c[k]={...c[k],...legacy[k]};
   }
   if(Array.isArray(legacy.logs))c.logs=legacy.logs.slice(0,60);
@@ -82,7 +119,7 @@ export function createCampaign(legacy=null){
 /** Operation First Light is a fictional civilian flood-response tutorial, not a live incident. */
 export const FIRST_LIGHT_STEPS = Object.freeze([
   {id:'inspect',title:'Assess the Niger Delta',detail:'Inspect the Delta theatre and review its initial risk and coverage.',button:'FOCUS DELTA'},
-  {id:'imagery',title:'Acquire partner imagery',detail:'Use a partner imagery credit (₦12B) for a fictional environmental assessment.',button:'OPEN IMAGERY DIRECTIVE'},
+  {id:'imagery',title:'Acquire partner imagery',detail:'Use a partner imagery credit (₦12B) for an environmental assessment.',button:'OPEN IMAGERY DIRECTIVE'},
   {id:'resilience',title:'Invest in local resilience',detail:'Fund the regional civilian resilience package (₦90B); intelligence makes it possible.',button:'OPEN RESILIENCE DIRECTIVE'},
   {id:'advance',title:'Advance to Q1 2027',detail:'Progress the strategic clock to see your first national emergency decision.',button:'ADVANCE QUARTER'},
   {id:'decision',title:'Make the flood-response decision',detail:'Choose the response that balances preparedness, cost and public confidence.',button:'REVIEW DECISION'}
@@ -115,7 +152,8 @@ export function campaignDateLabel(turn){
 }
 export function programmeRemaining(s,id){
   const p=PROGRAMMES[id];if(!p||s.programmes[id]!=='research')return 0;
-  return Math.max(0,p.research+(s.researchDelay?.[id]||0)-(s.turn-(s.researchTurn[id]??s.turn)));
+  const accelerator=s.projects?.academy?.status==='complete'?1:0;
+  return Math.max(0,p.research-accelerator+(s.researchDelay?.[id]||0)-(s.turn-(s.researchTurn[id]??s.turn)));
 }
 export function computeMetrics(s){
   const deployed=Object.keys(PROGRAMMES).filter(id=>s.programmes[id]==='deployed');
@@ -141,7 +179,7 @@ export function computeMetrics(s){
   const resilience=clamp((s.groundReliability*.55+s.integrity*.45)*(.65+.35*groundFactor));
   const meanRisk=Object.values(s.threats).reduce((a,b)=>a+b,0)/4;
   const score=Math.round(clamp(.28*coverage+.21*sovereignty+.18*resilience+.16*s.support+.17*(100-meanRisk)));
-  const upkeep=22+Math.max(0,s.groundLevel-1)*7+(s.geoExtension?-2:0)+deployed.reduce((a,id)=>a+PROGRAMMES[id].upkeep,0);
+  const upkeep=22+Math.max(0,s.groundLevel-1)*7+(s.geoExtension?-2:0)+deployed.reduce((a,id)=>a+PROGRAMMES[id].upkeep,0)+Object.entries(s.projects||{}).reduce((n,[id,v])=>n+(v.status==='complete'?(PROJECTS[id]?.upkeep||0):0),0);
   return {coverage,potentialCoverage,regionalCoverage,sovereignty,resilience,score,upkeep,meanRisk,deployed,processingFactor,groundFactor,unprocessed,delivered};
 }
 export function assessCampaign(s){
@@ -183,7 +221,7 @@ export function queueMission(state,assetId,regionId,observationEpochSeconds=stat
 function processMissionQueue(s){
   const queue=s.missionQueue||[],completed=[];
   let downlinks=0;
-  const maxDownlinks=Math.min(4,Math.max(1,s.groundLevel));
+  const maxDownlinks=Math.min(5,Math.max(1,s.groundLevel)+(s.projects?.fusion?.status==='complete'?1:0));
   for(const original of queue){
     const task={...original,completedTurn:s.turn};
     let failure=null;
@@ -218,13 +256,14 @@ export function analyseProduct(state,productId){
   if(!product||product.analysedTurn)return error(state,'Select an unprocessed observation product.');
   if(state.bandwidth<(MISSION_ASSETS[product.assetId]?.processing||15))return error(state,'Insufficient analysis-processing capacity.');
   if(state.groundHealth<35)return error(state,'Ground data services are unavailable.');
-  const s=clone(state),cost=9;
+  const s=clone(state),cost=s.projects?.fusion?.status==='complete'?6:9;
   if(!deduct(s,cost))return error(state,'Insufficient funds for imagery processing.');
   const p=s.dataProducts.find(p=>p.id===productId);
   p.analysedTurn=s.turn;
-  const confidenceGain=Math.round(9+p.quality/9);
+  const confidenceGain=Math.round(9+p.quality/9)+(s.projects?.fusion?.status==='complete'?4:0);
   s.intel[p.regionId]=clamp(s.intel[p.regionId]+confidenceGain);
-  log(s,`${p.id}: ${p.product} product analysed for ${MISSION_REGIONS[p.regionId].short}. Confidence +${confidenceGain}, no automatic threat reduction.`,'success');
+  log(s,`${p.id}: ${p.product} analysed for ${MISSION_REGIONS[p.regionId].short}. Confidence +${confidenceGain}.`,'success');
+  awardMilestones(s);
   return {state:s,message:`${p.id} analysed · regional confidence +${confidenceGain}.`,error:false};
 }
 export function applyDirective(state,action,id){
@@ -232,6 +271,14 @@ export function applyDirective(state,action,id){
   if(state.pendingEvent)return error(state,'Resolve the urgent strategic event before authorising new directives.');
   const s=clone(state);let cost=0,message='Directive approved.';
   switch(action){
+    case 'project':{
+      const p=PROJECTS[id];if(!p)return error(state,'Choose a valid strategic project.');
+      if(s.projects?.[id])return error(state,'This project is already funded.');
+      if(Object.values(s.projects||{}).filter(x=>x.status==='active').length>=2)return error(state,'Both project teams are committed. Complete an existing project first.');
+      if(!deduct(s,p.cost))return error(state,'Not enough funding for this project.');
+      cost=p.cost;s.projects[id]={status:'active',startTurn:s.turn,finishTurn:s.turn+p.quarters};
+      message=`${p.name}: authorised. Ready in ${p.quarters} quarters. Budget committed upfront; upkeep begins after completion.`;break;
+    }
     case 'fund':{
       const p=PROGRAMMES[id];if(!p||s.programmes[id]!=='concept')return error(state,'This programme is not available for new research funding.');
       cost=p.researchCost;if(!deduct(s,cost))return error(state,'Insufficient budget.');
@@ -242,7 +289,7 @@ export function applyDirective(state,action,id){
       if(s.groundLevel<2)return error(state,'Ground infrastructure Level 2 is required to commission spacecraft.');
       if(s.bandwidth<p.processing+20)return error(state,'Insufficient data-processing capacity for this mission. Upgrade the receiving network.');
       cost=p.commissionCost;if(!deduct(s,cost))return error(state,'Insufficient budget for mission procurement and commissioning.');
-      s.programmes[id]='deployed';s.integrity=clamp(s.integrity+2);message=`${p.name}: commissioned as a fictional future scenario. Quarterly upkeep now applies.`;break;}
+      s.programmes[id]='deployed';s.integrity=clamp(s.integrity+2);message=`${p.name}: commissioned. Quarterly upkeep now applies.`;break;}
     case 'upgrade':{
       if(!['geo','abuja','nasrda','toro','epe'].includes(id))return error(state,'Select an appropriate ground or communications asset.');
       if(s.groundLevel>=4)return error(state,'Ground network is already at maximum level.');
@@ -259,7 +306,7 @@ export function applyDirective(state,action,id){
       if(s.researchCapacity<24)return error(state,'Build research capacity before authorising Epe feasibility work.');
       cost=260;if(!deduct(s,cost))return error(state,'Insufficient budget.');
       s.launchFunded=true;s.researchCapacity=clamp(s.researchCapacity+8);
-      message='Epe research feasibility funded. This does not represent an operational launch facility.';break;}
+      message='Epe research feasibility programme funded.';break;}
     case 'observe':{
       if(!THEATRE_IDS.includes(id))return error(state,'Choose a strategic theatre.');
       if(s.commercialCredits<1)return error(state,'No partner imagery credits available. Contract imagery first.');
@@ -273,7 +320,7 @@ export function applyDirective(state,action,id){
       cost=90;if(!deduct(s,cost))return error(state,'Insufficient budget.');
       const effectiveness=Math.round(4+Math.min(6,s.intel[id]/15));
       s.threats[id]=clamp(s.threats[id]-effectiveness);s.support=clamp(s.support+2);s.intel[id]=clamp(s.intel[id]-7);
-      message=`Regional resilience package implemented. Fictional pressure reduced by ${effectiveness}; analysis confidence consumed.`;break;}
+      message=`Regional resilience strengthened. Pressure reduced by ${effectiveness}; analysis confidence consumed.`;break;}
     case 'contract':{
       cost=52;if(!deduct(s,cost))return error(state,'Insufficient budget.');
       s.commercialCredits+=4;message='Four partner imagery credits purchased; use them in theatre assessments.';break;}
@@ -286,10 +333,10 @@ export function applyDirective(state,action,id){
       cost=65;if(!deduct(s,cost))return error(state,'Insufficient budget.');
       s.researchCapacity=clamp(s.researchCapacity+12);message='Domestic research and integration capacity improved.';break;}
     case 'investigate':{
-      if(!(id in s.progress))return error(state,'Select a fictional training anomaly.');
+      if(!(id in s.progress))return error(state,'Select an exercise anomaly.');
       cost=35;if(!deduct(s,cost))return error(state,'Insufficient budget.');
       s.progress[id]=clamp(s.progress[id]+(10+Math.round(computeMetrics(s).coverage/10)));
-      message='Synthetic training anomaly assessment advanced using available coverage.';break;}
+      message='Training exercise assessment advanced using available coverage.';break;}
     case 'scan':return error(state,'Use Mission Control to task a commissioned spacecraft, receive data, and process the product.');
     default:return error(state,'Unknown directive: '+action);
   }
@@ -297,7 +344,8 @@ export function applyDirective(state,action,id){
     if(action==='observe')s.firstLight.imagery=true;
     if(action==='stabilize')s.firstLight.resilience=true;
   }
-  log(s,`${message} (₦${cost}B scenario expenditure)`, 'success');
+  log(s,`${message} (₦${cost}B)`, 'success');
+  awardMilestones(s);
   s.outcome=assessCampaign(s);
   return {state:s,message,error:false};
 }
@@ -307,6 +355,14 @@ export function advanceCampaign(state){
   if(state.turn>=MAX_TURNS)return error(state,'Campaign timeline finished.');
   const s=clone(state);s.turn++;
   processMissionQueue(s);
+  for(const [id,job] of Object.entries(s.projects||{})){
+    if(job.status!=='active'||s.turn<job.finishTurn)continue;
+    job.status='complete';job.completedTurn=s.turn;
+    if(id==='exchange'){s.groundReliability=clamp(s.groundReliability+10);s.support=clamp(s.support+3);}
+    if(id==='fusion'){s.bandwidth=money(clamp(s.bandwidth+30,0,400));s.groundHealth=clamp(s.groundHealth+6);}
+    if(id==='academy'){s.researchCapacity=clamp(s.researchCapacity+18);}
+    log(s,`${PROJECTS[id].name}: delivered. ${PROJECTS[id].impact}. Ongoing quarterly upkeep ₦${PROJECTS[id].upkeep}B.`,'success');
+  }
   s.missionEpochSeconds=(s.turn-1)*MISSION_HORIZON_S;
   const m=computeMetrics(s);
   const appropriation=s.turn%4===1?s.appropriation:0;
@@ -322,7 +378,7 @@ export function advanceCampaign(state){
   }
   const coverage=computeMetrics(s).coverage;
   for(const [index,id] of THEATRE_IDS.entries()){
-    const pressure=(Math.sin(s.turn*1.7+index*2.1)>0?2:1);
+    const pressure=Math.max(0,(Math.sin(s.turn*1.7+index*2.1)>0?2:1)-(s.projects?.exchange?.status==='complete'?1:0));
     const intelligence=s.intel[id]||30;
     s.threats[id]=clamp(s.threats[id]+pressure-(coverage>55&&intelligence>54?2:0),5,99);
     s.intel[id]=clamp(intelligence-2+Math.round((computeMetrics(s).regionalCoverage[id]||0)/30));
@@ -335,6 +391,7 @@ export function advanceCampaign(state){
     s.pendingEvent=event.id;
     log(s,`Decision required: ${event.title}`,'warning');
   }
+  awardMilestones(s);
   s.outcome=assessCampaign(s);
   return {state:s,message:s.pendingEvent?'Quarter advanced — national decision required.':`Advanced to ${campaignDateLabel(s.turn)}.`,error:false};
 }
@@ -349,9 +406,16 @@ export function resolveEvent(state,optionId){
   }
   if(choice.bandwidth)s.bandwidth=money(clamp(s.bandwidth+choice.bandwidth,0,400));
   if(choice.confidence)for(const id of THEATRE_IDS)s.intel[id]=clamp(s.intel[id]+choice.confidence);
-  if(choice.deltaRisk)for(const id of THEATRE_IDS)s.threats[id]=clamp(s.threats[id]+choice.deltaRisk,5,99);
+  if(choice.deltaRisk)s.threats.delta=clamp(s.threats.delta+choice.deltaRisk,5,99);
   if(choice.autonomy)s.researchCapacity=clamp(s.researchCapacity+choice.autonomy);
-  if(choice.delay)for(const id of Object.keys(PROGRAMMES))if(s.programmes[id]==='research')s.researchDelay[id]=(s.researchDelay[id]||0)+choice.delay;
+  if(choice.delay){
+    for(const id of Object.keys(PROGRAMMES))if(s.programmes[id]==='research')s.researchDelay[id]=(s.researchDelay[id]||0)+choice.delay;
+    for(const job of Object.values(s.projects||{}))if(job.status==='active')job.finishTurn+=choice.delay;
+  }
+  if(['flood','outage'].includes(event.id)&&s.projects?.exchange?.status==='complete'&&!['defer','accept'].includes(choice.id)){
+    s.support=clamp(s.support+2);s.groundReliability=clamp(s.groundReliability+3);
+    log(s,'Emergency Data Exchange: coordinated response improved public confidence and service uptime.','success');
+  }
   // Readiness earns a measurable benefit; opting to defer lowers the exercise outcome.
   // Only the very first scripted flood event can resolve this onboarding operation.
   if(event.id==='flood'&&s.firstLight?.status==='active'&&s.turn===2){
@@ -367,6 +431,7 @@ export function resolveEvent(state,optionId){
   }
   s.resolvedEvents[`${s.turn}-${event.id}`]=choice.id;s.pendingEvent=null;
   log(s,`${event.title}: ${choice.label}. ₦${choice.cost}B allocated.`, 'success');
+  awardMilestones(s);
   s.outcome=assessCampaign(s);
   return {state:s,message:'Strategic decision recorded.',error:false};
 }

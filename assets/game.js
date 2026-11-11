@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createCampaign, MAX_TURNS, PROGRAMMES, EVENTS, campaignDateLabel, computeMetrics, programmeRemaining, applyDirective, advanceCampaign, resolveEvent, queueMission, analyseProduct, FIRST_LIGHT_STEPS, firstLightProgress, recordFirstLightInspection, skipFirstLight } from './strategy.mjs';
+import { createCampaign, MAX_TURNS, PROGRAMMES, PROJECTS, MILESTONES, milestoneStatus, projectRemaining, EVENTS, campaignDateLabel, computeMetrics, programmeRemaining, applyDirective, advanceCampaign, resolveEvent, queueMission, analyseProduct, FIRST_LIGHT_STEPS, firstLightProgress, recordFirstLightInspection, skipFirstLight } from './strategy.mjs';
 import { propagateOrbit, orbitPeriodSeconds as physicsPeriod, planMission, MISSION_ASSETS, MISSION_REGIONS, RECEIVERS, formatHours } from './orbital.mjs';
 import { missionReplayFrame, REPLAY_DURATION_S, groundNetworkSnapshot } from './replay.mjs';
 const React = window.React;
@@ -11,23 +11,23 @@ const SATS = [
     { id: 'geo', type: 'satellite', name: 'NigComSat-1R', subtitle: 'IN SERVICE · GEO communications · 42.5°E', altitude: 35786, inclination: 0, fuel: 88, revisit: 0, status: 'IN SERVICE · NIGCOMSAT', tone: '#f4ba65', directive: 'Protect continuity of the simulated satellite communications backbone. This is an existing Nigerian civilian-operated space asset.', detail: 'Verified in service: NIGCOMSAT Ltd operates NigComSat-1R at 42.5°E. Capacity, fuel, downlink traffic and budget values here are NOT real telemetry.', class: 'GEO', factual: 'verified', period: 1436, stage: 'active' },
     { id: 'sat3', type: 'satellite', name: 'NigeriaSat-3 Programme', subtitle: 'PLANNED · future optical Earth observation', altitude: 700, inclination: 98.0, fuel: 100, revisit: 96, status: 'PLANNED · NOT IN ORBIT', tone: '#49caff', directive: 'Fund high-resolution imaging capability, indigenous engineering and national data access; procure and commission a future orbital platform.', detail: 'NigeriaSat-3 is a stated future mission, not a verified operational spacecraft. All proposed orbit, imagery cadence and cost figures in the game are design assumptions.', class: 'SSO', factual: 'planned', period: 99.0, raanDeg: 10.1, phaseDeg: 9.0, stage: 'concept' },
     { id: 'sar', type: 'satellite', name: 'Nigeria SAR Programme', subtitle: 'PROPOSED · all-weather radar observation', altitude: 620, inclination: 97.8, fuel: 100, revisit: 110, status: 'PROPOSED · NOT IN ORBIT', tone: '#bc9cff', directive: 'Invest in future synthetic aperture radar capability for all-weather mapping, disaster monitoring and situational awareness.', detail: 'NASRDA lists a Nigeria SAR mission among its plans. The present game platform, designation, orbit and coverage are illustrative programme targets, not launched assets.', class: 'SSO', factual: 'planned', period: 97.1, raanDeg: 11.4, phaseDeg: -2.8, stage: 'concept' },
-    { id: 'ais', type: 'satellite', name: 'Maritime AIS Smallsat', subtitle: 'SCENARIO CONCEPT · maritime monitoring', altitude: 550, inclination: 55.0, fuel: 100, revisit: 125, status: 'CONCEPT · NOT IN ORBIT', tone: '#7fe1cb', directive: 'Study an optional future satellite-based Automatic Identification System receiving capability for civilian maritime awareness.', detail: 'A fictional future programme for the strategy campaign. No verified Nigerian satellite named DELSAT-AIS was found. No operational AIS satellite is claimed.', class: 'PROGRADE', factual: 'scenario', period: 95.6, raanDeg: 6.2, phaseDeg: 14.0, stage: 'concept' },
+    { id: 'ais', type: 'satellite', name: 'Maritime AIS Smallsat', subtitle: 'CONCEPT · maritime monitoring', altitude: 550, inclination: 55.0, fuel: 100, revisit: 125, status: 'CONCEPT · NOT IN ORBIT', tone: '#7fe1cb', directive: 'Study an optional future satellite-based Automatic Identification System receiving capability for civilian maritime awareness.', detail: 'A proposed satellite-based AIS concept for maritime awareness; no operational AIS spacecraft is claimed.', class: 'PROGRADE', factual: 'scenario', period: 95.6, raanDeg: 6.2, phaseDeg: 14.0, stage: 'concept' },
 ];
 const THEATRES = [
-    { id: 'hadin', type: 'theatre', name: 'Operation HADIN KAI', subtitle: 'North-East · Borno / Lake Chad', lat: 11.72, lon: 12.25, risk: 68, tone: '#ff927c', directive: 'Improve fictional disaster alerting, satellite image availability and communications resilience for the North-East theatre.', status: 'CURRENT OPERATION' },
+    { id: 'hadin', type: 'theatre', name: 'Operation HADIN KAI', subtitle: 'North-East · Borno / Lake Chad', lat: 11.72, lon: 12.25, risk: 68, tone: '#ff927c', directive: 'Improve disaster alerting, satellite image availability and communications resilience for the North-East theatre.', status: 'CURRENT OPERATION' },
     { id: 'fansan', type: 'theatre', name: 'Operation FANSAN YAMMA', subtitle: 'North-West · Sokoto / Zamfara', lat: 11.35, lon: 5.65, risk: 62, tone: '#ffc777', directive: 'Extend hypothetical space-based intelligence support and communications continuity in the North-West.', status: 'CURRENT OPERATION' },
     { id: 'savannah', type: 'theatre', name: 'Operation SAVANNAH SHIELD', subtitle: 'North-Central · strategic support', lat: 8.85, lon: 8.62, risk: 57, tone: '#85c0f8', directive: 'Expand geospatial analysis and emergency communications for the North-Central campaign.', status: 'REPORTED IN 2026' },
     { id: 'delta', type: 'theatre', name: 'Operation DELTA SAFE', subtitle: 'Niger Delta · Gulf of Guinea', lat: 5.4, lon: 6.6, risk: 50, tone: '#6cf3d0', directive: 'Develop hypothetical maritime domain awareness, environmental monitoring and oil-spill alerts.', status: 'CURRENT OPERATION' },
 ];
 const GROUND = [
-    { id: 'abuja', type: 'station', name: 'DSA · Abuja', subtitle: 'Defence Space Administration headquarters', lat: 9.0765, lon: 7.3986, tone: '#5ff6cc', status: 'REAL INSTITUTION', directive: 'Direct the fictional national C4ISR space support command. DSA participates in defence space services; its public headquarters are in Abuja.', detail: 'Map location is a city-scale illustration, not an operational facility coordinate.' },
+    { id: 'abuja', type: 'station', name: 'DSA · Abuja', subtitle: 'Defence Space Administration headquarters', lat: 9.0765, lon: 7.3986, tone: '#5ff6cc', status: 'REAL INSTITUTION', directive: 'Direct the national space programme. DSA participates in defence space services; its public headquarters are in Abuja.', detail: 'Map location is a city-scale illustration, not an operational facility coordinate.' },
     { id: 'nasrda', type: 'station', name: 'NASRDA Ground Station', subtitle: 'Abuja · satellite operations / reception', lat: 9.15, lon: 7.48, tone: '#67e9ff', status: 'PUBLIC FACILITY', directive: 'Connect hypothetical data sharing agreements to NASRDA ground receiving and satellite-technology facilities.', detail: 'NASRDA lists a main ground receiving station in Abuja. The map pin is city-level and NOT a surveyed antenna location.' },
     { id: 'toro', type: 'station', name: 'Toro Geodesy Centre', subtitle: 'Bauchi State · geodynamics / geodesy', lat: 10.05, lon: 9.04, tone: '#9dd7ff', status: 'PUBLIC RESEARCH CENTRE', directive: 'Develop geodetic measurement and reference-network research; TT&C relay services would require separate hypothetical investment.', detail: 'NASRDA identifies the Centre for Geodesy and Geodynamics in Toro; it is not verified here as a NigComSat satellite TT&C relay.' },
     { id: 'epe', type: 'station', name: 'CSTP · Epe', subtitle: 'Lagos · research / propulsion centre', lat: 6.56, lon: 3.98, tone: '#ffca75', status: 'R&D CENTRE · NO SPACEPORT', directive: 'Fund a conceptual orbital launch-complex feasibility study at Nigeria’s existing Epe space propulsion research centre.', detail: 'The Centre for Space Transport and Propulsion is real. A fully commissioned satellite launch spaceport and the shown gantry are speculative upgrades.' },
 ];
 const TARGETS = [
     { id: 'a17', type: 'target', name: 'Simulation Alert A-17', subtitle: 'Synthetic spectral cluster', lat: 12.15, lon: 12.74, tone: '#ff817b', progress: 28, status: 'TRAINING CONTACT', directive: 'Run a simulated anomaly assessment; no live adversary data is used.' },
-    { id: 'm04', type: 'target', name: 'Simulation Event M-04', subtitle: 'Fictional environmental alert', lat: 5.30, lon: 7.32, tone: '#ffc97b', progress: 52, status: 'ASSESSING', directive: 'Compare fictional coastal imagery for simulated change detection.' },
+    { id: 'm04', type: 'target', name: 'Environmental Event M-04', subtitle: 'Environmental alert', lat: 5.30, lon: 7.32, tone: '#ffc97b', progress: 52, status: 'ASSESSING', directive: 'Compare coastal imagery for change detection.' },
     { id: 'j11', type: 'target', name: 'Synthetic coverage gap J-11', subtitle: 'Sensor-network exercise', lat: 10.42, lon: 5.74, tone: '#ff817b', progress: 15, status: 'TRAINING CONTACT', directive: 'Close an illustrative coverage gap with planning and calibration.' },
 ];
 const NEIGHBORS = [{ "name": "Niger", "polys": [[[13.5404, 14.3671], [13.9567, 13.9967], [13.9545, 13.3534], [14.5958, 13.3304], [14.4958, 12.8594], [14.2135, 12.802], [14.1813, 12.4837], [13.9954, 12.4616], [13.3187, 13.5564], [13.084, 13.5961], [12.3021, 13.0372], [11.5278, 13.329], [10.9896, 13.3873], [10.701, 13.2469], [10.1148, 13.2773], [9.5249, 12.8511], [9.0149, 12.8267], [7.8047, 13.3435], [7.3307, 13.098], [6.8204, 13.1151], [6.4454, 13.4928], [5.4431, 13.8659], [4.3683, 13.7475], [4.1079, 13.5312], [3.9673, 12.9561], [3.6806, 12.5529], [3.6112, 11.6602], [2.8486, 12.2356], [2.4902, 12.2331], [2.1545, 11.9402], [2.1771, 12.625], [1.1, 12.8369], [1.1, 15.0491], [1.3855, 15.3236], [2.75, 15.4095], [3.2567, 15.5], [13.9117, 15.5], [13.5404, 14.3671]]] }, { "name": "Chad", "polys": [[[15.2795, 7.4219], [15.4361, 7.6928], [15.1209, 8.3822], [14.98, 8.7961], [14.5445, 8.9659], [13.9542, 9.5495], [14.1715, 10.0214], [14.6272, 9.9209], [14.9094, 9.9921], [15.4679, 9.9823], [14.9236, 10.8913], [14.9602, 11.5556], [14.8934, 12.219], [14.4958, 12.8594], [14.5958, 13.3304], [13.9545, 13.3534], [13.9567, 13.9967], [13.5404, 14.3671], [13.9117, 15.5], [15.5, 15.5], [15.5, 7.442], [15.2795, 7.4219]]] }, { "name": "Cameroon", "polys": [[[14.8934, 12.219], [14.9602, 11.5556], [14.9236, 10.8913], [15.4679, 9.9823], [14.9094, 9.9921], [14.6272, 9.9209], [14.1715, 10.0214], [13.9542, 9.5495], [14.5445, 8.9659], [14.98, 8.7961], [15.1209, 8.3822], [15.4361, 7.6928], [15.2795, 7.4219], [14.7765, 6.4085], [14.5366, 6.227], [14.4594, 5.4518], [14.5589, 5.0306], [14.4784, 4.7326], [14.951, 4.2104], [15.0362, 3.8514], [15.4054, 3.3353], [15.5, 3.2687], [15.5, 3.1], [9.7795, 3.1], [9.4044, 3.7345], [8.9481, 3.9041], [8.7449, 4.3522], [8.4888, 4.4956], [8.5003, 4.772], [8.7575, 5.4797], [9.2332, 6.4445], [9.5227, 6.4535], [10.1183, 7.0388], [10.4974, 7.0554], [11.0588, 6.6444], [11.7458, 6.9814], [11.8393, 7.397], [12.0639, 7.7998], [12.2189, 8.3058], [12.7537, 8.7178], [12.9555, 9.4178], [13.1676, 9.6406], [13.3087, 10.1604], [13.5729, 10.7986], [14.4154, 11.5724], [14.4682, 11.9048], [14.5772, 12.0854], [14.1813, 12.4837], [14.2135, 12.802], [14.4958, 12.8594], [14.8934, 12.219]]] }, { "name": "Benin", "polys": [[[1.8652, 6.1422], [1.619, 6.832], [1.6645, 9.1286], [1.463, 9.3346], [1.4251, 9.8254], [1.1, 10.1532], [1.1, 11.0633], [1.2435, 11.1105], [1.4472, 11.5477], [1.936, 11.6412], [2.1545, 11.9402], [2.4902, 12.2331], [2.8486, 12.2356], [3.6112, 11.6602], [3.5722, 11.3279], [3.7971, 10.7347], [3.6001, 10.3322], [3.7054, 10.0632], [3.2204, 9.4442], [2.9123, 9.1376], [2.7238, 8.5068], [2.7491, 7.8707], [2.6917, 6.2588], [1.8652, 6.1422]]] }];
@@ -481,7 +481,7 @@ class TacticalScene {
             sat.userData.assetId = a.id;
             this.globeGroup.add(sat);
             this.pickables.push(sat);
-            const marker = makeLabel(a.name, a.class === 'GEO' ? 'GEO · fixed longitude' : 'SIMULATED DESIGN ORBIT', a.tone, false);
+            const marker = makeLabel(a.name, a.class === 'GEO' ? 'GEO · fixed longitude' : 'DESIGN ORBIT', a.tone, false);
             marker.scale.multiplyScalar(.42);
             this.globeGroup.add(marker);
             this.orbitSats.push({ obj: sat, marker, index: i, a, track, trackCount });
@@ -597,7 +597,8 @@ class TacticalScene {
         this.tableGroup.add(this.orbitTrackGroup);
         this.satObjects = [];
         this.beams = [];
-        this.reticles = [];        const geoAsset = SATS[0], geoState = orbitState(geoAsset, 0);
+        this.reticles = [];
+        const geoAsset = SATS[0], geoState = orbitState(geoAsset, 0);
         const geoDirection = orbitToTabletop(geoState.ecef).sub(new THREE.Vector3(0, 2, 0)).normalize();
         const geoPosition = geoDirection.multiplyScalar(154).add(new THREE.Vector3(0, 2, 0));
         const geo = satelliteMesh(geoAsset.tone, .72);
@@ -896,8 +897,7 @@ class TacticalScene {
         const sat = this.satObjects.find(s => s.a.id === id);
         if (!sat)
             return;
-        let p = sat.sat.position.clone();
-        this.startTransition(p.clone().add(new THREE.Vector3(26, 19, 29)), p, 850);
+        let p = sat.sat.position.clone();        this.startTransition(p.clone().add(new THREE.Vector3(26, 19, 29)), p, 850);
     }
     else {
         if (this.mode === 'Orbit View')
@@ -932,7 +932,8 @@ function Scene3D({ engineRef, onPick, mode, layers, labels, speed, commissioned,
 }, []); useEffect(() => { engineRef.current?.configure({ mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask }); }, [mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask]); return React.createElement("div", { ref: el, className: "scene-canvas", "aria-label": "Interactive simulated Nigeria tactical map" }); }
 function Meter({ value, color }) { return React.createElement("div", { className: "meter-track" },
     React.createElement("div", { style: { width: clamp(value, 0, 100) + '%', background: color || '#54e3cb' } })); }
-const SAVE_KEY = 'tuhg-campaign-v4';
+const SAVE_KEY = 'tuhg-campaign-v5';
+const V4_SAVE_KEY = 'tuhg-campaign-v4';
 const V3_SAVE_KEY = 'tuhg-campaign-v3';
 const PREVIOUS_SAVE_KEY = 'tuhg-campaign-v2';
 const OLD_SAVE_KEY = 'tuhg-campaign-v1';
@@ -957,7 +958,7 @@ function exitGameFullscreen() {
 
 function readCampaignSave() {
     try {
-        const raw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(V3_SAVE_KEY) || localStorage.getItem(PREVIOUS_SAVE_KEY) || localStorage.getItem(OLD_SAVE_KEY);
+        const raw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(V4_SAVE_KEY) || localStorage.getItem(V3_SAVE_KEY) || localStorage.getItem(PREVIOUS_SAVE_KEY) || localStorage.getItem(OLD_SAVE_KEY);
         if (!raw) return null;
         const saved = JSON.parse(raw);
         return saved && typeof saved.turn === 'number' ? saved : null;
@@ -1011,6 +1012,8 @@ function App() {
     const [plannerEpoch, setPlannerEpoch] = useState(0);
     const { budget, bandwidth, support, integrity, turn, threats, fuel, launchFunded, geoExtension, programmes, researchTurn, progress, logs } = campaign;
     const metrics = useMemo(() => computeMetrics(campaign), [campaign]);
+    const milestones = useMemo(() => milestoneStatus(campaign), [campaign]);
+    const projectCount = Object.values(campaign.projects||{}).filter(p=>p.status==='active').length;
     const firstLight = useMemo(() => firstLightProgress(campaign), [campaign]);
     const ended = Boolean(campaign.outcome);
     const commissioned = useMemo(() => ({ geo: true, ...Object.fromEntries(Object.entries(programmes).map(([id, stage]) => [id, stage === 'deployed'])) }), [programmes]);
@@ -1027,7 +1030,7 @@ function App() {
     const selected = ASSETS.find(a => a.id === selectedId) || SATS[0];
     const stage = selected.type === 'satellite' ? (programmes[selected.id] || 'active') : null;
     const inService = stage === 'active' || stage === 'deployed';
-    const statusLine = selected.type === 'satellite' ? (stage === 'concept' ? selected.status : stage === 'research' ? `R&D IN PROGRESS · ${programmeRemaining(campaign, selected.id)} QUARTERS LEFT` : stage === 'ready' ? 'QUALIFIED · AWAITING COMMISSIONING' : stage === 'deployed' ? 'DEPLOYED · FUTURE SCENARIO' : selected.status) : selected.status;
+    const statusLine = selected.type === 'satellite' ? (stage === 'concept' ? selected.status : stage === 'research' ? `R&D IN PROGRESS · ${programmeRemaining(campaign, selected.id)} QUARTERS LEFT` : stage === 'ready' ? 'QUALIFIED · AWAITING COMMISSIONING' : stage === 'deployed' ? 'DEPLOYED ' : selected.status) : selected.status;
     const risk = threats[selected.id] ?? selected.risk ?? 0;
     const inform = (msg) => { setToast(msg); clearTimeout(toastTimeout.current); toastTimeout.current = setTimeout(() => setToast(''), 3600); };
     const choose = (id) => { if(id==='delta'&&campaign.firstLight?.status==='active')setCampaign(s=>recordFirstLightInspection(s,'delta')); setSelectedId(id); setTab('Overview'); setDrawerOpen(true); const item = ASSETS.find(a => a.id === id); if (mode === 'Orbit View' && item?.type !== 'satellite') {
@@ -1098,6 +1101,11 @@ function App() {
         if (!result.error) setCampaign(result.state);
         inform(result.message);
     };
+    const startProject = (id) => {
+        const result = applyDirective(campaign,'project',id);
+        if(!result.error)setCampaign(result.state);
+        inform(result.message);
+    };
     const decide = (choiceId) => {
         const result = resolveEvent(campaign, choiceId);
         if (!result.error) {setCampaign(result.state);if(result.state.firstLight?.status==='complete')setFirstLightOpen(true);}
@@ -1130,17 +1138,17 @@ function App() {
     };
     const missionPanel=missionOpen && React.createElement('section',{className:'mission-control panel',role:'dialog','aria-label':'Orbital Mission Control'},
       React.createElement('div',{className:'mission-heading'},
-        React.createElement('div',null,React.createElement('small',null,'ORBITAL OPERATIONS · FICTIONAL SCENARIO'),React.createElement('h2',null,'MISSION CONTROL')),
+        React.createElement('div',null,React.createElement('small',null,'ORBITAL OPERATIONS · MISSION PLANNING'),React.createElement('h2',null,'MISSION CONTROL')),
         React.createElement('button',{className:'mission-close',onClick:()=>setMissionOpen(false),'aria-label':'Close Mission Control'},React.createElement(Icon,{name:'x',size:19}))),
       React.createElement('div',{className:'mission-tabs'},
         React.createElement('button',{className:missionView==='tasking'?'active':'',onClick:()=>setMissionView('tasking')},'SATELLITE TASKING'),
         React.createElement('button',{className:missionView==='network'?'active':'',onClick:()=>setMissionView('network')},'GROUND NETWORK')),
       missionView==='tasking'?React.createElement(React.Fragment,null,
-        React.createElement('p',{className:'mission-intro'},'Task commissioned fictional spacecraft. An observation must reach a ground receiver and be analysed before it improves regional intelligence.'),
+        React.createElement('p',{className:'mission-intro'},'Task a commissioned spacecraft. Receive and analyse the observation to improve intelligence confidence.'),
         React.createElement('div',{className:'mission-controls'},
           React.createElement('label',null,'SPACECRAFT',React.createElement('select',{value:missionAsset,onChange:e=>setMissionAsset(e.target.value)},
             Object.keys(MISSION_ASSETS).map(id=>React.createElement('option',{key:id,value:id},`${id.toUpperCase()} · ${programmes[id]==='deployed'?'COMMISSIONED':'NOT DEPLOYED'}`)))),
-          React.createElement('label',null,'SCENARIO REGION',React.createElement('select',{value:missionRegion,onChange:e=>setMissionRegion(e.target.value)},
+          React.createElement('label',null,'OPERATION AREA',React.createElement('select',{value:missionRegion,onChange:e=>setMissionRegion(e.target.value)},
             Object.entries(MISSION_REGIONS).map(([id,r])=>React.createElement('option',{key:id,value:id},r.short))))),
         React.createElement('div',{className:'mission-forecast'},
           React.createElement('div',{className:'mission-forecast-title'},React.createElement(Icon,{name:'orbit',size:16}),'14-DAY GEOMETRIC PASS FORECAST'),
@@ -1148,7 +1156,7 @@ function App() {
             React.createElement('div',{className:'mission-stats'},
               [['PASSES',missionPlan?.passCount??0],['NEXT PASS',formatHours(missionPlan?.hoursUntilPass)],['CLOSEST APPROACH',`${missionPlan?.closestKm} km`],['RECEIVER',missionPlan?.receiverAvailable?'ACCESSIBLE':'UNAVAILABLE']].map(([l,v])=>React.createElement('div',{key:l},React.createElement('small',null,l),React.createElement('b',null,v)))),
             React.createElement('p',{className:'mission-receiver'},`Scheduled receiving point: ${missionPlan?.receiver}. ${missionPlan?.groundWaitHours==null?'No predicted contact.':`Wait ${formatHours(missionPlan.groundWaitHours)} following acquisition.`}`)),
-          React.createElement('p',{className:'mission-note'},'These orbital elements, receivers and spacecraft are digital-twin assumptions, not verified real-world mission coordinates.')),
+          React.createElement('p',{className:'mission-note'},'Forecasts depend on orbital geometry, contact windows and receiving availability.')),
         React.createElement('div',{className:'mission-actions'},
           React.createElement('button',{disabled:!missionOperational||!!missionPlan?.error||!missionPlan?.receiverAvailable||!!campaign.pendingEvent||ended,onClick:submitMission},React.createElement(Icon,{name:'satellite',size:17}),missionOperational?'QUEUE OBSERVATION':'COMMISSION SATELLITE FIRST'),
           React.createElement('span',null,`${groundOps.queued}/${groundOps.schedulingSlots} QUEUED · ${groundOps.receivingSlots} RECEIVING SLOTS`)),
@@ -1166,14 +1174,14 @@ function App() {
             React.createElement('div',null,React.createElement('b',null,`${task.id} · ${task.status.toUpperCase()}`),React.createElement('small',null,task.reason||`${MISSION_REGIONS[task.regionId]?.short} · ${task.receiverName}`)),
             React.createElement('button',{className:'mission-replay-button',onClick:()=>startReplay(task)},'REPLAY')))))
       :React.createElement('div',{className:'ground-dashboard'},
-        React.createElement('p',{className:'mission-intro'},'Simulated receiving network. Upgraded capacity enables additional geometric downlink opportunities, but service reliability is shared across the network.'),
+        React.createElement('p',{className:'mission-intro'},'Upgraded capacity enables additional downlinks. Reliability is shared across receiving stations.'),
         React.createElement('div',{className:'mission-stats'},
           [['NETWORK',`LEVEL ${groundOps.level}`],['HEALTH',`${groundOps.health}%`],['RELIABILITY',`${groundOps.reliability}%`],['RECEIVERS',groundOps.accessibleCount],['TASK QUEUE',`${groundOps.queued}/${groundOps.schedulingSlots}`],['DOWNLINK SLOTS',groundOps.receivingSlots],['BACKLOG',groundOps.unprocessed],['PROCESSING',`${Math.round(bandwidth)} GB/s`]].map(([name,value])=>React.createElement('div',{key:name},React.createElement('small',null,name),React.createElement('b',null,value)))),
         React.createElement('h3',null,'RECEIVING NODES'),
         groundOps.receivers.map(station=>React.createElement('div',{className:'ground-station-row',key:station.id},
-          React.createElement('div',null,React.createElement('b',null,station.name),React.createElement('small',null,station.level===1?'Scenario access to existing receiving facilities':'Fictional future infrastructure investment')),
+          React.createElement('div',null,React.createElement('b',null,station.name),React.createElement('small',null,station.level===1?'Partner station access':'Expanded receiving network')),
           React.createElement('span',{className:station.enabled?'active':''},station.enabled?'ENABLED':`LEVEL ${station.level} REQUIRED`))),
-        React.createElement('p',{className:'mission-note'},'Receiver positions and capabilities are scenario abstractions; no live infrastructure telemetry is represented.'),
+        React.createElement('p',{className:'mission-note'},'Receiving capacity and availability are managed through your ground network.'),
         React.createElement('div',{className:'ground-actions'},
           React.createElement('button',{disabled:!!campaign.pendingEvent||groundOps.level>=4||ended,onClick:()=>{const r=applyDirective(campaign,'upgrade','nasrda');if(!r.error)setCampaign(r.state);inform(r.message);}},'UPGRADE NETWORK'),
           React.createElement('button',{disabled:!!campaign.pendingEvent||ended,onClick:()=>{const r=applyDirective(campaign,'maintain','nasrda');if(!r.error)setCampaign(r.state);inform(r.message);}},'SERVICE INFRASTRUCTURE'))));
@@ -1197,7 +1205,7 @@ function App() {
                     React.createElement("span", { className: "res-icon gold" },
                         React.createElement(Icon, { name: "layers-3", size: 21 })),
                     React.createElement("div", null,
-                        React.createElement("div", { className: "res-label" }, "SCENARIO INVESTMENT BUDGET"),
+                        React.createElement("div", { className: "res-label" }, "TREASURY"),
                         React.createElement("div", { className: "res-value" },
                             "\u20A6 ",
                             fmtNum(budget),
@@ -1211,7 +1219,8 @@ function App() {
                         React.createElement("div", { className: "res-value" },
                             fmtNum(bandwidth),
                             " ",
-                            React.createElement("small", null, "GB/s")))),                React.createElement("div", { className: "resource" },
+                            React.createElement("small", null, "GB/s")))),
+                React.createElement("div", { className: "resource" },
                     React.createElement("span", { className: "res-icon green" },
                         React.createElement(Icon, { name: "users", size: 21 })),
                     React.createElement("div", null,
@@ -1275,16 +1284,18 @@ function App() {
                     React.createElement(Icon, { name: 'layers', size: 18 }), React.createElement('span', null, 'LAYERS'))),
             missionPanel,
             replayTask&&React.createElement('div',{className:'replay-hud',role:'status'},
-                React.createElement('div',null,React.createElement('small',null,'MISSION REPLAY · FICTIONAL ORBIT'),React.createElement('strong',null,`${replayTask.id} · ${replayPhase==='acquisition'?'OBSERVATION':replayPhase==='downlink'?'GROUND DOWNLINK':'REPLAY COMPLETE'}`),React.createElement('span',null,`${MISSION_REGIONS[replayTask.regionId]?.short||'SCENARIO'} · ${replayTask.assetId.toUpperCase()}`)),
+                React.createElement('div',null,React.createElement('small',null,'MISSION REPLAY'),React.createElement('strong',null,`${replayTask.id} · ${replayPhase==='acquisition'?'OBSERVATION':replayPhase==='downlink'?'GROUND DOWNLINK':'REPLAY COMPLETE'}`),React.createElement('span',null,`${MISSION_REGIONS[replayTask.regionId]?.short||'REGION'} · ${replayTask.assetId.toUpperCase()}`)),
                 React.createElement('button',{onClick:()=>{setReplayTask(null);setOrbitalPlay(true)}},'EXIT REPLAY')),
             React.createElement("aside", { className: "leftpanel panel scroll-area" },
                 React.createElement("div", { className: "panel-heading" },
                     React.createElement("span", { className: "smalloverline" }, "OPERATIONAL INTELLIGENCE"),
-                    React.createElement("button", { title: "Open campaign briefing", onClick: () => setEntered(false) },
+                    React.createElement("button", { title: "Game briefing and source notes", onClick: () => setEntered(false) },
                         React.createElement(Icon, { name: "info", size: 16 }))),
                 React.createElement("button",{className:'mission-launch',onClick:()=>openMission(selected.type==='satellite'?selected.id:null,selected.type==='theatre'?selected.id:null)},
                     React.createElement(Icon,{name:'satellite-dish',size:17}),
                     React.createElement('span',null,React.createElement('b',null,'OPEN MISSION CONTROL'),React.createElement('small',null,`${(campaign.missionQueue||[]).length} tasked · ${metrics.unprocessed} awaiting analysis`))),
+                React.createElement('button',{className:'portfolio-jump',onClick:()=>document.getElementById('project-portfolio')?.scrollIntoView({behavior:'smooth',block:'start'})},
+                    React.createElement(Icon,{name:'briefcase-business',size:15}), 'STRATEGIC PROJECTS · ',`${projectCount}/2 ACTIVE`,React.createElement(Icon,{name:'chevron-right',size:14})),
                 React.createElement("div", { className: "theatre-head" },
                     React.createElement("h2", null, "ACTIVE THEATRES"),
                     React.createElement("span", null,
@@ -1325,6 +1336,27 @@ function App() {
                     React.createElement("button", {onClick:()=>act('contract')}, "BUY IMAGERY · ₦52B"),
                     React.createElement("button", {onClick:()=>act('research')}, "FUND RESEARCH · ₦65B"),
                     React.createElement("button", {onClick:()=>act('maintain')}, "MAINTENANCE · ₦45B")),
+                React.createElement('div',{id:'project-portfolio',className:'portfolio-panel'},
+                    React.createElement('div',{className:'section-label'},React.createElement(Icon,{name:'briefcase-business',size:15}),' STRATEGIC PROJECTS',React.createElement('span',{className:'portfolio-slots'},`${projectCount}/2 IN PROGRESS`)),
+                    React.createElement('p',{className:'portfolio-hint'},'Choose carefully. Construction takes several quarters and ties up capital. Completed projects add benefits and operating costs.'),
+                    Object.entries(PROJECTS).map(([id,project])=>{
+                        const job=campaign.projects?.[id];
+                        const state=job?.status==='complete'?'COMPLETE':job?.status==='active'?`${projectRemaining(campaign,id)} QTR LEFT`:'AVAILABLE';
+                        const disabled=!!job||projectCount>=2||budget<project.cost||!!campaign.pendingEvent||ended;
+                        return React.createElement('div',{key:id,className:'portfolio-project '+(job?.status||'available')},
+                            React.createElement('div',{className:'portfolio-project-head'},React.createElement(Icon,{name:project.icon,size:16}),React.createElement('b',null,project.name),React.createElement('small',null,state)),
+                            React.createElement('p',null,project.summary),
+                            React.createElement('div',{className:'portfolio-impact'},project.impact),
+                            React.createElement('div',{className:'portfolio-action'},
+                                React.createElement('span',null,`₦${project.cost}B · ${project.quarters} quarters`,React.createElement('small',null,`Upkeep ₦${project.upkeep}B/qtr after delivery`)),
+                                React.createElement('button',{disabled,onClick:()=>startProject(id),'aria-label':`Fund ${project.name}`},job?'FUNDED':'AUTHORISE')));
+                    })),
+                React.createElement('div',{className:'milestone-section'},
+                    React.createElement('div',{className:'section-label'},React.createElement(Icon,{name:'flag',size:15}),' PROGRAMME MILESTONES',React.createElement('span',{className:'portfolio-slots'},`${milestones.filter(x=>x.earned).length}/3 EARNED`)),
+                    milestones.map(item=>React.createElement('div',{key:item.id,className:'milestone-card '+(item.earned?'earned':'')},
+                        React.createElement(Icon,{name:item.earned?'check-circle-2':'circle-dot',size:16}),
+                        React.createElement('div',null,React.createElement('b',null,item.name),React.createElement('small',null,item.description)),
+                        React.createElement('span',null,item.earned?'CLAIMED':`₦${item.reward}B`)))),
                 React.createElement("div", { className: "section-separator" }),
                 React.createElement("div", { className: "section-label" },
                     React.createElement(Icon, { name: "satellite", size: 15 }),
@@ -1333,7 +1365,7 @@ function App() {
                     React.createElement("span", { className: "programme-dot", style: { background: a.tone } }),
                     React.createElement("span", null,
                         React.createElement("b", null, a.name),
-                        React.createElement("small", null, programmes[a.id] === 'deployed' ? 'Commissioned in scenario' : programmes[a.id] === 'research' ? `R&D qualification · ${programmeRemaining(campaign,a.id)} quarters` : programmes[a.id] === 'ready' ? 'Ready for commissioning' : 'Awaiting investment')),
+                        React.createElement("small", null, programmes[a.id] === 'deployed' ? 'Commissioned' : programmes[a.id] === 'research' ? `R&D qualification · ${programmeRemaining(campaign,a.id)} quarters` : programmes[a.id] === 'ready' ? 'Ready for commissioning' : 'Awaiting investment')),
                     React.createElement(Icon, { name: "chevron-right", size: 14 })))),
                 React.createElement("div", { className: "section-separator" }),
                 React.createElement("div", { className: "section-label" },
@@ -1361,7 +1393,7 @@ function App() {
                 React.createElement("div", { className: "section-label" },
                     React.createElement(Icon, { name: "activity", size: 15 }),
                     " COMMAND LOG ",
-                    React.createElement("span", { className: "log-live" }, "\u25CF SIMULATION")),
+                    React.createElement("span", { className: "log-live" }, "\u25CF COMMAND LOG")),
                 React.createElement("div", { className: "eventlog" }, logs.slice(0, 5).map((l, i) => React.createElement("div", { className: 'event ' + l.type, key: i },
                     React.createElement("span", { className: "event-time" },
                         "T",
@@ -1374,7 +1406,7 @@ function App() {
                         " ",
                         React.createElement("strong", null, "DSA \u00B7 WAR ROOM C4ISR"),
                         " ",
-                        React.createElement("span", null, "TACTICAL SIMULATION")),
+                        React.createElement("span", null, "SPACE STRATEGY")),
                     React.createElement("div", { className: "top-quick-actions" },
                         React.createElement('button',{className:'mission-top-button',onClick:()=>openMission()},React.createElement(Icon,{name:'satellite-dish',size:15}),' MISSIONS'),
                         React.createElement("button", { className: 'orbit-motion ' + (orbitalPlay ? 'active' : ''), title: "Orbital motion is a separate educational playback, independent of the paused strategy campaign", onClick: () => setOrbitalPlay(v => !v) },
@@ -1448,7 +1480,7 @@ function App() {
                     React.createElement("span", { className: "asset-type" },
                         selected.type.toUpperCase(),
                         " \u00B7 ",
-                        selected.type === 'target' ? 'SYNTHETIC / TRAINING' : selected.type === 'theatre' ? 'CURRENT PUBLIC OPERATION / SIMULATED' : selected.type === 'station' ? 'PUBLIC INSTITUTION / ILLUSTRATIVE PIN' : selected.factual === 'verified' ? 'REAL PLATFORM / SIMULATED' : selected.factual === 'planned' ? 'PLANNED / SIMULATED' : 'HYPOTHETICAL / SIMULATED')),
+                        selected.type === 'target' ? 'TRAINING EVENT' : selected.type === 'theatre' ? 'OPERATION THEATRE' : selected.type === 'station' ? 'GROUND NETWORK' : selected.factual === 'verified' ? 'CURRENT ASSET' : selected.factual === 'planned' ? 'FUTURE PROGRAMME' : 'DESIGN CONCEPT')),
                 React.createElement("div", { className: "asset-picker" },
                     React.createElement("span", null, "ASSET INDEX"),
                     React.createElement("select", { "aria-label": "Select an asset dossier", value: selectedId, onChange: e => choose(e.target.value) },
@@ -1514,27 +1546,27 @@ function App() {
                                 React.createElement("em", null, "%"))),
                         React.createElement("div", null,
                             React.createElement("small", null, "CLASSIFICATION"),
-                            React.createElement("strong", { className: "small-value" }, "SIMULATED"))) : React.createElement(React.Fragment, null,
+                            React.createElement("strong", { className: "small-value" }, "MODELLED"))) : React.createElement(React.Fragment, null,
                         React.createElement("div", null,
                             React.createElement("small", null, "LINK STATUS"),
                             React.createElement("strong", { className: "small-value" }, selected.status)),
                         React.createElement("div", null,
                             React.createElement("small", null, "UPLINK"),
-                            React.createElement("strong", { className: "small-value" }, "SIMULATED")))),
+                            React.createElement("strong", { className: "small-value" }, "MODELLED")))),
                     selected.detail && React.createElement("p", { className: "fact-note" }, selected.detail),
                     React.createElement("div", { className: "section-label space-top" }, "CURRENT STRATEGIC DIRECTIVE"),
                     React.createElement("div", { className: "directive-block" },
                         React.createElement(Icon, { name: "target", size: 18 }),
                         React.createElement("p", null, selected.directive))),
                 tab === 'Telemetry' && React.createElement("div", { className: "dossier-body" },
-                    React.createElement("div", { className: "section-label" }, "LIVE / SYNTHETIC DATA"),
-                    (selected.type === 'satellite' ? [['Spacecraft', 'Scenario model / digital twin'], ['Altitude', `${selected.altitude} km`], ['Inclination', `${selected.inclination}°`], ['Fuel reserve', selected.id === 'geo' ? 'Not publicly verified' : inService ? `${fuel[selected.id]}% · GAME MODEL` : 'NOT DEPLOYED'], ['Payload health', 'Synthetic scenario'], ['Telemetry link', 'Fictional'], ['Modelled orbital period', selected.class === 'GEO' ? '23 h 56 min' : `${(orbitPeriodSeconds(selected) / 60).toFixed(2)} min`], ['Ground subpoint', orbitalInfo?.id === selected.id ? `${orbitalInfo.lat.toFixed(2)}° latitude / ${orbitalInfo.lon.toFixed(2)}° longitude` : 'Loading model'], ['Over Nigeria now', selected.class === 'GEO' ? 'Fixed at 42.5°E · footprint schematic' : orbitalInfo?.id === selected.id ? (orbitalInfo.overNigeria ? 'YES · geometric overpass' : 'NO · orbital pass outside country') : 'Computing'], ['Orbital playback', orbitalPlay ? 'RUNNING · 60× accelerated' : 'PAUSED · campaign clock separate']] : selected.type === 'theatre' ? [['Risk index', `${risk}/100`], ['Operational coverage', `${Math.round(metrics.regionalCoverage[selected.id] ?? 0)}%`], ['Communications link', `${Math.round(metrics.resilience)}% resilience index`], ['Last update', `Turn ${turn}`]] : selected.type === 'target' ? [['Analysis complete', `${progress[selected.id]}%`], ['Cross-check', 'Pending confirmation'], ['Confidence', 'Simulated only'], ['Last update', `Turn ${turn}`]] : [['Node health', selected.status], ['Simulated uptime', 'Synthetic only'], ['Traffic', 'Scenario packets'], ['Power supply', 'Unverified']]).map(([l, v]) => React.createElement("div", { className: "telemetry-row", key: l },
+                    React.createElement("div", { className: "section-label" }, "MISSION SYSTEMS"),
+                    (selected.type === 'satellite' ? [['Spacecraft', 'Scenario model / digital twin'], ['Altitude', `${selected.altitude} km`], ['Inclination', `${selected.inclination}°`], ['Fuel reserve', selected.id === 'geo' ? 'Not publicly verified' : inService ? `${fuel[selected.id]}% · ESTIMATE` : 'NOT DEPLOYED'], ['Payload health', 'Mission model'], ['Telemetry link', 'Game'], ['Modelled orbital period', selected.class === 'GEO' ? '23 h 56 min' : `${(orbitPeriodSeconds(selected) / 60).toFixed(2)} min`], ['Ground subpoint', orbitalInfo?.id === selected.id ? `${orbitalInfo.lat.toFixed(2)}° latitude / ${orbitalInfo.lon.toFixed(2)}° longitude` : 'Loading model'], ['Over Nigeria now', selected.class === 'GEO' ? 'Fixed at 42.5°E · footprint schematic' : orbitalInfo?.id === selected.id ? (orbitalInfo.overNigeria ? 'YES · geometric overpass' : 'NO · orbital pass outside country') : 'Computing'], ['Orbital playback', orbitalPlay ? 'RUNNING · 60× accelerated' : 'PAUSED · campaign clock separate']] : selected.type === 'theatre' ? [['Risk index', `${risk}/100`], ['Operational coverage', `${Math.round(metrics.regionalCoverage[selected.id] ?? 0)}%`], ['Communications link', `${Math.round(metrics.resilience)}% resilience index`], ['Last update', `Turn ${turn}`]] : selected.type === 'target' ? [['Analysis complete', `${progress[selected.id]}%`], ['Cross-check', 'Pending confirmation'], ['Confidence', 'Simulated only'], ['Last update', `Turn ${turn}`]] : [['Node health', selected.status], ['Service uptime', 'Model estimate'], ['Traffic', 'Data throughput'], ['Power supply', 'Unverified']]).map(([l, v]) => React.createElement("div", { className: "telemetry-row", key: l },
                         React.createElement("span", null, l),
                         React.createElement("b", null, v))),
                     React.createElement("div", { className: "telemetry-note" }, "Spacecraft fuel, health, economics, tactical risks and satellite orbits are game models. Only the specifically attributed system and institution facts are externally verified. All moving future satellites are translucent DESIGN PREVIEWS until commissioned. Orbital inclination, period, Earth rotation and J2 nodal precession are represented in a simplified propagation model, not verified active ephemerides.")),
                 tab === 'Directives' && React.createElement("div", { className: "dossier-body" },
                     React.createElement("div", { className: "section-label" }, "COMMAND AUTHORIZATION"),
-                    React.createElement("p", { className: "asset-description" }, "Allocate fictional resources and advance the turn-based campaign. All actions affect local simulated state only."),
+                    React.createElement("p", { className: "asset-description" }, "Commit your resources carefully. Each decision changes your campaign."),
                     React.createElement("div", { className: "directive-block" },
                         React.createElement(Icon, { name: "shield", size: 18 }),
                         React.createElement("p", null, selected.directive))),
@@ -1590,7 +1622,7 @@ function App() {
                             " Fund resilience package ",
                             React.createElement("span", null, "\u20A690B"))) : selected.type === 'target' ? React.createElement("button", { onClick: () => act('investigate') },
                         React.createElement(Icon, { name: "search-check", size: 17 }),
-                        " Analyse simulated anomaly ",
+                        " Analyse exercise anomaly ",
                         React.createElement("span", null, "\u20A635B")) : React.createElement(React.Fragment, null,
                         React.createElement("button", { onClick: () => act('upgrade') },
                             React.createElement(Icon, { name: "network", size: 17 }),
@@ -1604,7 +1636,7 @@ function App() {
                             React.createElement("span", null, "\u20A6260B")))),
                 React.createElement("div", { className: "dossier-footer" },
                     React.createElement(Icon, { name: "lock-keyhole", size: 13 }),
-                    " SECURE SIMULATION ENVIRONMENT")),
+                    " THE ULTIMATE HIGH GROUND")),
             !drawerOpen && React.createElement("button", { className: "open-drawer", onClick: () => setDrawerOpen(true) },
                 React.createElement(Icon, { name: "panel-right-open", size: 16 }),
                 " DOSSIER"),
@@ -1617,7 +1649,7 @@ function App() {
                 React.createElement('small',{className:'firstlight-counter'},`${firstLight.finished} / ${firstLight.total} BRIEFING OBJECTIVES`),
                 firstLightBriefing ? React.createElement(React.Fragment,null,
                     React.createElement('h2',null,'Protect the Delta'),
-                    React.createElement('p',null,'A fictional seasonal flood threatens civilian infrastructure. With limited sovereign imagery, you must use partner data, invest in resilience, and make a national response decision. Every choice affects the campaign.'),
+                    React.createElement('p',null,'Seasonal flooding threatens civilian infrastructure. With limited sovereign imagery, you must use partner data, invest in resilience, and make a national response decision. Every choice affects the campaign.'),
                     React.createElement('div',{className:'firstlight-actions'},
                         React.createElement('button',{className:'primary',onClick:()=>setFirstLightBriefing(false)},'BEGIN OPERATION'),
                         React.createElement('button',{onClick:()=>{setCampaign(s=>skipFirstLight(s));setFirstLightOpen(false);}},'SKIP TUTORIAL'))) : React.createElement(React.Fragment,null,
@@ -1628,7 +1660,7 @@ function App() {
                         React.createElement('button',{onClick:()=>setFirstLightOpen(false)},'HIDE')))),
             entered && campaign.firstLight?.status==='active' && !firstLightOpen && !campaign.pendingEvent && React.createElement('button',{className:'firstlight-reopen',onClick:()=>setFirstLightOpen(true)},React.createElement(Icon,{name:'sunrise',size:15}),' FIRST LIGHT'),
             entered && campaign.firstLight?.status==='complete' && firstLightOpen && React.createElement('section',{className:'firstlight-debrief panel',role:'dialog','aria-label':'First Light mission debrief'},
-                React.createElement('div',{className:'firstlight-kicker'},'MISSION DEBRIEF · FICTIONAL CIVILIAN RESPONSE'),
+                React.createElement('div',{className:'firstlight-kicker'},'MISSION DEBRIEF '),
                 React.createElement('h2',null,`OPERATION ${firstLight.outcome}`),
                 React.createElement('p',null,firstLight.score>=2?'Your preparedness improved the response to the flood scenario. Early evidence and resilience spending made a measurable difference.':'The scenario exposed gaps in preparation. You can still build a stronger space and ground infrastructure during the full campaign.'),
                 React.createElement('div',{className:'firstlight-milestones'},FIRST_LIGHT_STEPS.map(step=>React.createElement('span',{key:step.id,className:firstLight.done[step.id]?'done':'missed'},React.createElement(Icon,{name:firstLight.done[step.id]?'check-circle-2':'circle',size:14}),step.title))),
@@ -1675,9 +1707,9 @@ function App() {
                 React.createElement("div", { className: "splash-kicker" },
                     React.createElement("span", { className: "pulse-dot" }),
                     " NIGERIA \u00B7 2026 BASELINE / FUTURE SPACE STRATEGY ",
-                    React.createElement("span", { className: "splash-pip" }, "// BUILD 07 / FIRST LIGHT")),
+                    React.createElement("span", { className: "splash-pip" }, "// BUILD 08 / STRATEGIC DEPTH")),
                 React.createElement("div", { className: "splash-logo" },
-                    "UNOFFICIAL STRATEGY SIMULATION ",
+                    "SPACE STRATEGY GAME ",
                     React.createElement("span", null, "\u25C8"),
                     " DSA WAR ROOM C4ISR"),
                 React.createElement("h1", null,
@@ -1716,6 +1748,6 @@ function App() {
                 React.createElement("div", { className: "side-caption" },
                     React.createElement("strong", null, "NIGCOMSAT-1R"),
                     React.createElement("span", null, "42.5\u00B0E GEO \u00B7 VERIFIED SERVICE / SCENARIO DATA"))),
-            React.createElement("div", { className: "splash-disclaimer" }, "INDEPENDENT / UNOFFICIAL GAME \u00B7 PUBLIC-SOURCE 2026 BASELINE \u00B7 SIMULATED FUTURE SYSTEMS \u00B7 NO LIVE MILITARY DATA")));
+            React.createElement("div", { className: "splash-disclaimer" }, "INDEPENDENT / UNOFFICIAL GAME \u00B7 PUBLIC-SOURCE 2026 BASELINE \u00B7 MODELLED FUTURE SYSTEMS \u00B7 NO LIVE MILITARY DATA")));
 }
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App, null));

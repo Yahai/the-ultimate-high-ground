@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createCampaign,recordFirstLightInspection,firstLightProgress,skipFirstLight,applyDirective,advanceCampaign,resolveEvent,VERSION} from '../assets/strategy.mjs';
 let s=createCampaign();
-assert.equal(VERSION,4);
+assert.equal(VERSION,5);
 assert.equal(s.firstLight.status,'active');
 assert.equal(firstLightProgress(s).next.id,'inspect');
 let bad=recordFirstLightInspection(s,'hadin');assert.equal(bad,s,'Unrelated selections must not mark First Light inspection');

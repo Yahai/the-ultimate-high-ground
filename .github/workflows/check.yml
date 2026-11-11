@@ -29,6 +29,8 @@ jobs:
         run: node tests/replay.test.mjs
       - name: Verify Operation First Light and save migration
         run: node tests/first_light.test.mjs
+      - name: Verify strategic project pipeline and milestones
+        run: node tests/portfolio.test.mjs
   mobile-ui:
     runs-on: ubuntu-24.04
     steps:

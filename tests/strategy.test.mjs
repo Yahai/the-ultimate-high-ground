@@ -6,7 +6,7 @@ assert.equal(campaignDateLabel(2),'Q1 2027');
 assert.equal(campaignDateLabel(5),'Q4 2027');
 assert.equal(campaignDateLabel(40),'Q3 2036');
 let s=createCampaign();
-assert.equal(s.version,4);
+assert.equal(s.version,5);
 assert.equal(s.turn,1);
 assert.equal(s.commercialCredits,2);
 assert(computeMetrics(s).coverage<25);
@@ -25,7 +25,7 @@ r=resolveEvent(s,'coordinate');assert(!r.error);s=r.state;
 assert.equal(s.pendingEvent,null);
 for(let i=0;i<3;i++){
   s=advanceCampaign(s).state;
-  if(s.pendingEvent){const choice={flood:'defer',outage:'accept',research:'pass',debris:'ignore',budget:'protect',supplier:'delay'};const resolved=resolveEvent(s,choice[s.pendingEvent]);assert(!resolved.error);s=resolved.state;}
+  if(s.pendingEvent){const choice={flood:'defer',outage:'accept',research:'pass',debris:'ignore',budget:'protect',supplier:'delay',coast:'postpone',backlog:'ignore'};const resolved=resolveEvent(s,choice[s.pendingEvent]);assert(!resolved.error);s=resolved.state;}
 }
 assert.equal(s.programmes.sat3,'ready','Research must become ready after 4 quarters');
 assert(applyDirective(s,'deploy','sat3').error,'Ground dependency should prevent direct commission');
@@ -47,7 +47,7 @@ for(let i=1;i<MAX_TURNS;i++){
   assert(!result.error,`Turn ${i} cannot advance`);
   trial=result.state;
   if(trial.pendingEvent){
-    const options={flood:'defer',outage:'accept',research:'pass',debris:'ignore',budget:'protect',supplier:'delay'};
+    const options={flood:'defer',outage:'accept',research:'pass',debris:'ignore',budget:'protect',supplier:'delay',coast:'postpone',backlog:'ignore'};
     trial=resolveEvent(trial,options[trial.pendingEvent]).state;
   }
   assert(trial.budget>=0);

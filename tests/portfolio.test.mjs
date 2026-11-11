@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import {createCampaign,PROJECTS,MILESTONES,VERSION,applyDirective,advanceCampaign,resolveEvent,computeMetrics,milestoneStatus,projectRemaining,programmeRemaining} from '../assets/strategy.mjs';
+assert.equal(VERSION,5);
+const origin=createCampaign();
+assert.equal(Object.keys(origin.projects).length,0);
+assert.equal(Object.keys(PROJECTS).length,3);
+assert.equal(MILESTONES.length,3);
+assert.equal(createCampaign({version:4,turn:5,budget:400,firstLight:{status:'skipped'}}).budget,400);
+assert.deepEqual(createCampaign({version:4,turn:5,projects:{exchange:{status:'active',startTurn:4,finishTurn:6}}}).projects.exchange,{status:'active',startTurn:4,finishTurn:6});
+let s=origin;
+let a=applyDirective(s,'project','exchange');assert(!a.error);s=a.state;
+assert.equal(s.budget,origin.budget-160);
+assert.equal(projectRemaining(s,'exchange'),2);
+assert(applyDirective(s,'project','exchange').error,'Cannot invest twice in a single project');
+s=applyDirective(s,'project','fusion').state;
+assert(applyDirective(s,'project','academy').error,'Only two capital-intensive projects can run concurrently');
+assert.equal(computeMetrics(s).upkeep,computeMetrics(origin).upkeep,'Projects do not accrue upkeep before delivery');
+for(let i=0;i<2;i++){
+ s=advanceCampaign(s).state;
+ if(s.pendingEvent)s=resolveEvent(s,'coordinate').state;
+}
+assert.equal(s.projects.exchange.status,'complete');
+assert.equal(s.projects.fusion.status,'active');
+assert.equal(projectRemaining(s,'fusion'),1);
+assert(s.groundReliability>origin.groundReliability-5,'Exchange should improve network reliability');
+assert(computeMetrics(s).upkeep>computeMetrics(origin).upkeep,'Completed projects have recurring costs');
+const milestone=milestoneStatus(s).find(x=>x.id==='resilience');
+assert(milestone.earned,'Exchange completion must unlock the first grant when infrastructure is healthy');
+assert.equal(s.milestones.resilience,true);
+const repeatBudget=s.budget;
+const restored=createCampaign(s);
+assert.equal(milestoneStatus(restored).find(x=>x.id==='resilience').earned,true,'Grant should be one-time and survive save migration');
+assert.equal(restored.budget,repeatBudget);
+s=applyDirective(s,'project','academy').state;
+assert.equal(s.projects.academy.status,'active');
+let trial=createCampaign({version:5,turn:8,budget:1000,projects:{academy:{status:'complete',startTurn:1,finishTurn:4}},programmes:{sat3:'research'},researchTurn:{sat3:7}});
+assert.equal(programmeRemaining(trial,'sat3'),2,'Academy shortens R&D by one quarter');
+const baseline=createCampaign({version:5,turn:8,budget:1000,programmes:{sat3:'research'},researchTurn:{sat3:7}});
+assert.equal(programmeRemaining(baseline,'sat3'),3);
+const ready=createCampaign({version:5,turn:9,budget:1000,projects:{academy:{status:'complete',startTurn:5,finishTurn:8}},programmes:{sat3:'ready'}});
+assert(milestoneStatus(ready).find(x=>x.id==='innovation').ready);
+const grounded=createCampaign({version:5,turn:9,budget:1000,projects:{fusion:{status:'complete',startTurn:4,finishTurn:7}},missionsCompleted:2});
+assert(milestoneStatus(grounded).find(x=>x.id==='data').ready);
+assert.equal(grounded.projects.fusion.status,'complete');
+// A supply-chain delay must also delay active capital projects.
+let delayed=createCampaign({version:5,turn:9,budget:1000,pendingEvent:'supplier',projects:{fusion:{status:'active',startTurn:8,finishTurn:11}}});
+delayed=resolveEvent(delayed,'delay').state;
+assert.equal(delayed.projects.fusion.finishTurn,12);
+assert.equal(delayed.budget,1000);
+// Keep flood consequences geographically scoped.
+let flood=createCampaign({version:5,turn:5,budget:1000,pendingEvent:'flood'});
+const oldHadin=flood.threats.hadin,oldDelta=flood.threats.delta;
+flood=resolveEvent(flood,'defer').state;
+assert.equal(flood.threats.hadin,oldHadin);
+assert.equal(flood.threats.delta,oldDelta+4);
+assert.equal(MILESTONES.filter(x=>x.reward>0).length,3);
+console.log('PASS: project concurrency, delayed delivery, upkeep, milestones, one-time grants, migration, academy acceleration and regional consequences');
