@@ -17,4 +17,11 @@ assert(game.includes('const ORBIT_VISUAL_RATE = 6;'),'Orbital progression not sl
 assert(game.includes('NEXT OBSERVATION PASS'),'Missing orbit pass forecast HUD');
 assert(css.includes('.desktop-command-rail'),'Missing desktop navigation');
 assert(css.includes('.leftpanel.collapsed'),'Dashboard not collapsible');
+
+assert(game.includes("if(item.type==='station'&&item.id==='abuja')"),'DSA headquarters must not be modelled as a satellite dish');
+assert(game.includes("GROUND.filter(station=>station.id!=='abuja')"),'GEO ground links must exclude DSA headquarters');
+assert(game.includes("this.stationModels.set(item.id,model)"),'Satellite receiving stations must retain actual antenna geometry');
+assert(game.includes("if(item.id==='abuja')rich.position.set(-17,15,12)"),'Abuja command label must be offset and leader-connected');
+assert(game.includes("else if(item.id==='nasrda')rich.position.set(11,8,-5)"),'Abuja receiving station label must not overlap HQ');
+assert(game.includes('COMMAND HEADQUARTERS'),'Command headquarters must have its own asset group');
 console.log('PASS visual rescue: continent map, seamless terrain, ground graphics, orbital pacing and navigation');

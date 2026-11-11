@@ -22,7 +22,7 @@ const THEATRES = [
     { id: 'delta', type: 'theatre', name: 'Operation DELTA SAFE', subtitle: 'Niger Delta · Gulf of Guinea', lat: 5.4, lon: 6.6, risk: 50, tone: '#6cf3d0', directive: 'Develop hypothetical maritime domain awareness, environmental monitoring and oil-spill alerts.', status: 'CURRENT OPERATION' },
 ];
 const GROUND = [
-    { id: 'abuja', type: 'station', name: 'DSA · Abuja', subtitle: 'Defence Space Administration headquarters', lat: 9.0765, lon: 7.3986, tone: '#5ff6cc', status: 'REAL INSTITUTION', directive: 'Direct the national space programme. DSA participates in defence space services; its public headquarters are in Abuja.', detail: 'Map location is a city-scale illustration, not an operational facility coordinate.' },
+    { id: 'abuja', type: 'station', name: 'DSA Command HQ', subtitle: 'Abuja · strategic headquarters (no downlink dish)', lat: 9.0765, lon: 7.3986, tone: '#5ff6cc', status: 'REAL INSTITUTION', directive: 'Direct the national space programme. DSA participates in defence space services; its public headquarters are in Abuja.', detail: 'Map location is a city-scale illustration, not an operational facility coordinate.' },
     { id: 'nasrda', type: 'station', name: 'NASRDA Ground Station', subtitle: 'Abuja · satellite operations / reception', lat: 9.15, lon: 7.48, tone: '#67e9ff', status: 'PUBLIC FACILITY', directive: 'Connect hypothetical data sharing agreements to NASRDA ground receiving and satellite-technology facilities.', detail: 'NASRDA lists a main ground receiving station in Abuja. The map pin is city-level and NOT a surveyed antenna location.' },
     { id: 'toro', type: 'station', name: 'Toro Geodesy Centre', subtitle: 'Bauchi State · geodynamics / geodesy', lat: 10.05, lon: 9.04, tone: '#9dd7ff', status: 'PUBLIC RESEARCH CENTRE', directive: 'Develop geodetic measurement and reference-network research; TT&C relay services would require separate hypothetical investment.', detail: 'NASRDA identifies the Centre for Geodesy and Geodynamics in Toro; it is not verified here as a NigComSat satellite TT&C relay.' },
     { id: 'epe', type: 'station', name: 'CSTP · Epe', subtitle: 'Lagos · research / propulsion centre', lat: 6.56, lon: 3.98, tone: '#ffca75', status: 'R&D CENTRE · NO SPACEPORT', directive: 'Fund a conceptual orbital launch-complex feasibility study at Nigeria’s existing Epe space propulsion research centre.', detail: 'The Centre for Space Transport and Propulsion is real. A fully commissioned satellite launch spaceport and the shown gantry are speculative upgrades.' },
@@ -688,9 +688,38 @@ class TacticalScene {
             gp.add(holder);
             const glow = glowBall(item.tone, item.type === 'theatre' ? 1.22 : .85);
             holder.add(glow.group);
-            if(item.type==='station'){
-                // A true concave parabolic reflector with feedhorn, struts and az-el mount.
-                // Selected facilities have protective translucent spherical radomes.
+            if(item.type==='station'&&item.id==='abuja'){
+                // Headquarters is a command site, not a second Abuja receiver.
+                // Keep its geographical point truthful and draw an offset map symbol
+                // with a leader to prevent collision with the nearby NASRDA dish.
+                const command=new THREE.Group();
+                command.position.set(-17,4,12);
+                command.userData.assetId=item.id;
+                holder.add(command);
+                const walls=new THREE.MeshStandardMaterial({color:0x334c60,metalness:.25,roughness:.64});
+                const roof=new THREE.MeshStandardMaterial({color:0xc5d5d8,metalness:.48,roughness:.40});
+                const glass=new THREE.MeshStandardMaterial({color:0x4392ab,metalness:.18,roughness:.26,emissive:0x10405b,emissiveIntensity:.28});
+                const base=new THREE.Mesh(new THREE.BoxGeometry(4.4,.65,3.7),roof);base.position.y=-.12;command.add(base);
+                const building=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.35,2.8),walls);building.position.y=1.28;command.add(building);
+                const crown=new THREE.Mesh(new THREE.BoxGeometry(3.9,.28,3.05),roof);crown.position.y=2.57;command.add(crown);
+                for(const z of [-1.43,1.43]){
+                    const windows=new THREE.Mesh(new THREE.BoxGeometry(2.55,.75,.06),glass);
+                    windows.position.set(0,1.45,z);command.add(windows);
+                }
+                const mast=new THREE.Mesh(new THREE.CylinderGeometry(.065,.08,2.5,8),roof);
+                mast.position.set(1.0,3.91,0);command.add(mast);
+                const beacon=new THREE.Mesh(new THREE.SphereGeometry(.18,10,8),new THREE.MeshBasicMaterial({color:0x63f3c9}));
+                beacon.position.set(1.0,5.15,0);command.add(beacon);
+                const connector=new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,.3,0),new THREE.Vector3(-17,4,12)]),
+                    new THREE.LineDashedMaterial({color:0x86d5c7,transparent:true,opacity:.80,dashSize:.8,gapSize:.45,depthTest:false,depthWrite:false})
+                );
+                connector.computeLineDistances();holder.add(connector);
+                const commandHit=new THREE.Mesh(new THREE.BoxGeometry(5.8,6,5),new THREE.MeshBasicMaterial({visible:false}));
+                commandHit.position.set(0,1.5,0);commandHit.userData.assetId=item.id;command.add(commandHit);
+                this.pickables.push(commandHit);
+            }else if(item.type==='station'){
+                // Only actual receiving facilities receive a dish model and a GEO link.
                 const model=this.makeGroundAntenna(holder,item);
                 this.stationModels.set(item.id,model);
             }
@@ -711,10 +740,14 @@ class TacticalScene {
                 holder.add(area);
             }
             const rich = makeLabel(item.name, item.subtitle, item.tone, true);
-            rich.position.set(0, 8, 0);
+            if(item.id==='abuja')rich.position.set(-17,15,12);
+            else if(item.id==='nasrda')rich.position.set(11,8,-5);
+            else rich.position.set(0,8,0);
             holder.add(rich);
             const simple = makeLabel(item.name, '', item.tone, false);
-            simple.position.set(0, 6.7, 0);
+            if(item.id==='abuja')simple.position.set(-17,13.7,12);
+            else if(item.id==='nasrda')simple.position.set(11,6.7,-5);
+            else simple.position.set(0,6.7,0);
             holder.add(simple);
             rich.userData.assetId = item.id;
             simple.userData.assetId = item.id;
@@ -827,8 +860,9 @@ class TacticalScene {
         this.beamGroup.add(footprintOuter);
         this.geoLinks=[];
         const pulseGeometry=new THREE.SphereGeometry(.36,9,7);
-        GROUND.forEach((station,i)=>{
+        GROUND.filter(station=>station.id!=='abuja').forEach((station,i)=>{
             const model=this.stationModels.get(station.id);
+            if(!model)return;
             const geom=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),source]);
             const line=new THREE.Line(geom,new THREE.LineBasicMaterial({color:i%2===0?0xeebd77:0x91cce2,transparent:true,opacity:.46,depthTest:false,depthWrite:false}));
             line.renderOrder=36;this.beamGroup.add(line);
@@ -837,7 +871,7 @@ class TacticalScene {
                 const glow=new THREE.Mesh(pulseGeometry,new THREE.MeshBasicMaterial({color:i%2===0?0xffdf9d:0xc4f5ff,transparent:true,opacity:.92,depthTest:false,depthWrite:false}));
                 glow.renderOrder=37;this.beamGroup.add(glow);pulses.push(glow);
             }
-            this.geoLinks.push({model,station,line,pulses,source,level:i<2?1:i===2?3:2});
+            this.geoLinks.push({model,station,line,pulses,source,level:station.id==='nasrda'?1:station.id==='epe'?2:3});
         });
         this.contactLinks=[];
         SATS.slice(1).forEach((a,k)=>{
@@ -1811,7 +1845,8 @@ function App() {
                     React.createElement("select", { "aria-label": "Select an asset dossier", value: selectedId, onChange: e => choose(e.target.value) },
                         React.createElement("optgroup", { label: "SATELLITES" }, SATS.map(a => React.createElement("option", { key: a.id, value: a.id }, a.name))),
                         React.createElement("optgroup", { label: "THEATRES" }, THEATRES.map(a => React.createElement("option", { key: a.id, value: a.id }, a.name))),
-                        React.createElement("optgroup", { label: "GROUND STATIONS" }, GROUND.map(a => React.createElement("option", { key: a.id, value: a.id }, a.name))),
+                        React.createElement("optgroup", { label: "COMMAND HEADQUARTERS" }, GROUND.filter(a=>a.id==='abuja').map(a => React.createElement("option", { key: a.id, value: a.id }, a.name))),
+                        React.createElement("optgroup", { label: "GROUND STATIONS" }, GROUND.filter(a=>a.id!=='abuja').map(a => React.createElement("option", { key: a.id, value: a.id }, a.name))),
                         React.createElement("optgroup", { label: "ANOMALIES" }, TARGETS.map(a => React.createElement("option", { key: a.id, value: a.id }, a.name))))),
                 React.createElement("div", { className: "dossier-tabs" }, ['Overview', 'Telemetry', 'Directives', 'Sources'].map(s => React.createElement("button", { key: s, onClick: () => setTab(s), className: tab === s ? 'active' : '' }, s))),
                 tab === 'Overview' && React.createElement("div", { className: "dossier-body" },
