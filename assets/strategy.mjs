@@ -4,7 +4,7 @@ import { planMission, MISSION_ASSETS, MISSION_REGIONS, MISSION_HORIZON_S, DAY_S 
  * All money values are game billions of naira; satellite/programme data are synthetic.
  */
 export const MAX_TURNS = 40;
-export const VERSION = 3;
+export const VERSION = 4;
 export const PROGRAMMES = Object.freeze({
   sat3: {name:'NigeriaSat-3 optical programme',research:4,researchCost:95,commissionCost:270,upkeep:18,coverage:22,autonomy:19,processing:9},
   sar: {name:'Nigeria SAR research programme',research:6,researchCost:145,commissionCost:340,upkeep:24,coverage:30,autonomy:25,processing:16},
@@ -50,6 +50,7 @@ export function createCampaign(legacy=null){
     groundLevel:1,groundHealth:85,groundReliability:80,researchCapacity:20,appropriation:115,
     commercialCredits:2,consecutiveShortfalls:0,geoExtension:false,launchFunded:false,
     pendingEvent:null,resolvedEvents:{},outcome:null,score:0,
+    firstLight:{status:'active',inspected:false,imagery:false,resilience:false,outcome:null,completedTurn:null,choice:null,score:null},
     missionEpochSeconds:0,missionQueue:[],missionHistory:[],dataProducts:[],nextMissionId:1,missionsCompleted:0,
     logs:[{turn:1,type:'success',text:'Q4 2026 baseline established. Build sovereign capability while maintaining public services.'},
           {turn:1,type:'info',text:'Satellite missions beyond verified operations are fictional future programmes.'}]};
@@ -62,18 +63,49 @@ export function createCampaign(legacy=null){
     if(legacy[k]&&typeof legacy[k]==='object'&&!Array.isArray(legacy[k]))c[k]={...c[k],...legacy[k]};
   }
   if(Array.isArray(legacy.logs))c.logs=legacy.logs.slice(0,60);
+  // Existing saves keep their progress without unexpectedly starting a tutorial.
+  c.firstLight=legacy.firstLight && typeof legacy.firstLight==='object'
+    ? {...c.firstLight,...legacy.firstLight} : {...c.firstLight,status:'skipped'};
   for(const name of ['missionQueue','missionHistory','dataProducts'])if(Array.isArray(legacy[name]))c[name]=legacy[name].slice(0,50);
   if(!Number.isFinite(c.missionEpochSeconds)||c.missionEpochSeconds<0)c.missionEpochSeconds=(c.turn-1)*MISSION_HORIZON_S;
   c.turn=clamp(Math.trunc(c.turn),1,MAX_TURNS);
   c.budget=money(Math.max(0,Number(c.budget)||0));
   // A completed v1 campaign is not an automatic victory in v2.
-  if(Number(legacy.version)!==VERSION){
+  if(Number(legacy.version)<3){
     c.outcome=null;c.pendingEvent=null;c.consecutiveShortfalls=0;
     c.missionEpochSeconds=(c.turn-1)*MISSION_HORIZON_S;
     for(const id of Object.keys(PROGRAMMES)) if(c.programmes[id]==='funded')c.programmes[id]='research';
   }
   c.version=VERSION;c.maxTurns=MAX_TURNS;
   return c;
+}
+/** Operation First Light is a fictional civilian flood-response tutorial, not a live incident. */
+export const FIRST_LIGHT_STEPS = Object.freeze([
+  {id:'inspect',title:'Assess the Niger Delta',detail:'Inspect the Delta theatre and review its initial risk and coverage.',button:'FOCUS DELTA'},
+  {id:'imagery',title:'Acquire partner imagery',detail:'Use a partner imagery credit (₦12B) for a fictional environmental assessment.',button:'OPEN IMAGERY DIRECTIVE'},
+  {id:'resilience',title:'Invest in local resilience',detail:'Fund the regional civilian resilience package (₦90B); intelligence makes it possible.',button:'OPEN RESILIENCE DIRECTIVE'},
+  {id:'advance',title:'Advance to Q1 2027',detail:'Progress the strategic clock to see your first national emergency decision.',button:'ADVANCE QUARTER'},
+  {id:'decision',title:'Make the flood-response decision',detail:'Choose the response that balances preparedness, cost and public confidence.',button:'REVIEW DECISION'}
+]);
+export function firstLightProgress(state){
+  const x=state.firstLight||{status:'skipped'};
+  const done={inspect:!!x.inspected,imagery:!!x.imagery,resilience:!!x.resilience,advance:state.turn>=2,decision:x.status==='complete'};
+  const finished=FIRST_LIGHT_STEPS.filter(i=>done[i.id]).length;
+  const next=FIRST_LIGHT_STEPS.find(i=>!done[i.id]);
+  return {status:x.status,done,finished,total:FIRST_LIGHT_STEPS.length,next,
+    score:x.score,outcome:x.outcome,choice:x.choice,completedTurn:x.completedTurn};
+}
+export function recordFirstLightInspection(state,regionId){
+  if(regionId!=='delta'||state.firstLight?.status!=='active'||state.firstLight.inspected)return state;
+  const s=clone(state);s.firstLight.inspected=true;
+  log(s,'FIRST LIGHT: Niger Delta civilian exercise region inspected. Select the partner imagery directive.','success');
+  return s;
+}
+export function skipFirstLight(state){
+  if(state.firstLight?.status!=='active')return state;
+  const s=clone(state);s.firstLight.status='skipped';
+  log(s,'Operation First Light briefing dismissed. Free strategy campaign remains available.');
+  return s;
 }
 export function campaignDateLabel(turn){
   const quarterIndex=3+Math.max(0,turn-1); // turn 1 = Q4 2026; turn 2 = Q1 2027
@@ -261,6 +293,10 @@ export function applyDirective(state,action,id){
     case 'scan':return error(state,'Use Mission Control to task a commissioned spacecraft, receive data, and process the product.');
     default:return error(state,'Unknown directive: '+action);
   }
+  if(s.firstLight?.status==='active'&&id==='delta'){
+    if(action==='observe')s.firstLight.imagery=true;
+    if(action==='stabilize')s.firstLight.resilience=true;
+  }
   log(s,`${message} (₦${cost}B scenario expenditure)`, 'success');
   s.outcome=assessCampaign(s);
   return {state:s,message,error:false};
@@ -316,6 +352,19 @@ export function resolveEvent(state,optionId){
   if(choice.deltaRisk)for(const id of THEATRE_IDS)s.threats[id]=clamp(s.threats[id]+choice.deltaRisk,5,99);
   if(choice.autonomy)s.researchCapacity=clamp(s.researchCapacity+choice.autonomy);
   if(choice.delay)for(const id of Object.keys(PROGRAMMES))if(s.programmes[id]==='research')s.researchDelay[id]=(s.researchDelay[id]||0)+choice.delay;
+  // Readiness earns a measurable benefit; opting to defer lowers the exercise outcome.
+  // Only the very first scripted flood event can resolve this onboarding operation.
+  if(event.id==='flood'&&s.firstLight?.status==='active'&&s.turn===2){
+    const prepared=Number(!!s.firstLight.imagery)+Number(!!s.firstLight.resilience);
+    const response=choice.id==='contract'?1:choice.id==='defer'?-1:0;
+    const grade=Math.max(0,Math.min(3,prepared+response));
+    const outcome=['UNPREPARED','FRAGILE','EFFECTIVE','EXCELLENT'][grade];
+    s.firstLight={...s.firstLight,status:'complete',score:grade,outcome,choice:choice.id,completedTurn:s.turn};
+    if(grade===3){s.support=clamp(s.support+3);s.threats.delta=clamp(s.threats.delta-2,5,99);}
+    else if(grade===2){s.support=clamp(s.support+1);}
+    else if(grade===0){s.support=clamp(s.support-2);s.threats.delta=clamp(s.threats.delta+2,5,99);}
+    log(s,`OPERATION FIRST LIGHT: ${outcome}. ${prepared}/2 preparedness actions · ${choice.label}. Preparedness matters alongside your chosen response.`,grade>=2?'success':'warning');
+  }
   s.resolvedEvents[`${s.turn}-${event.id}`]=choice.id;s.pendingEvent=null;
   log(s,`${event.title}: ${choice.label}. ₦${choice.cost}B allocated.`, 'success');
   s.outcome=assessCampaign(s);

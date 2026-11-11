@@ -17,6 +17,7 @@ HTML = '''<div id="root"><div class="app-shell">
     <div class="workbench-toolbar"><div class="toolbar-top"><div class="top-quick-actions"><button>MISSIONS</button><button>ORBITS</button><button>LABELS</button><button>LAYERS</button></div></div>
       <div class="preset-row"><button class="preset">War Room 3D</button><button class="preset">Orbit View</button></div></div>
     <aside class="dossier panel">ASSET DOSSIER</aside><section class="mission-control panel">MISSION CONTROL</section>
+    <section class="firstlight-guide"><div class="firstlight-top">OPERATION FIRST LIGHT</div><h2>Inspect the Delta</h2><p>Choose a strategic response</p><div class="firstlight-actions"><button class="primary">Focus Delta</button></div></section>
     <div class="scene-bottom"><div class="zoom-buttons"><button>+</button><button>-</button></div></div>
     <nav class="mobile-bottom-nav"><button>MAP</button><button>ASSETS</button><button>MISSIONS</button><button>ORBIT</button><button>LAYERS</button></nav>
   </main></div></div><div class="rotate-device"><div class="rotate-device-content">Rotate</div></div>'''
@@ -42,6 +43,9 @@ with sync_playwright() as p:
             assert page.locator('.mission-control').bounding_box()['width'] < width*.65
             assert page.locator('.mobile-meta').is_visible(), 'Key metrics hidden on landscape phone'
             assert page.locator('.dossier').bounding_box()['x'] > width*.45
+            tutorial=page.locator('.firstlight-guide').bounding_box()
+            assert tutorial['x'] >= -1 and tutorial['x']+tutorial['width'] <= width+1
+            assert tutorial['y'] >= 0 and tutorial['y']+tutorial['height'] <= height+1
         else:
             assert page.locator('.rotate-device').is_visible()
         print(f'PASS: {width}x{height} {"landscape" if landscape else "portrait"} mobile layout')

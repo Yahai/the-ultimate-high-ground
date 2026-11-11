@@ -49,5 +49,5 @@ assert.equal(broken.missionHistory[0].status,'missed');
 assert.equal(broken.dataProducts.length,0);
 // Campaign version migration keeps old investments and gives new mission defaults.
 const migrated=createCampaign({version:2,turn:8,budget:650,programmes:{sar:'research'},groundLevel:2});
-assert.equal(migrated.version,3);assert.equal(migrated.missionQueue.length,0);assert.equal(migrated.missionEpochSeconds,7*14*86400);
+assert.equal(migrated.version,4);assert.equal(migrated.missionQueue.length,0);assert.equal(migrated.missionEpochSeconds,7*14*86400);
 console.log('PASS: mission eligibility, queueing costs, orbital delivery, ground limits/failures, analysis, independence from risk, save migration.');

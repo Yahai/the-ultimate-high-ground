@@ -25,6 +25,7 @@ Open the deployed `index.html` on GitHub Pages. Click **Enter War Room** (or **C
 - **Mission Control (v0.6):** commission an optical, radar or maritime spacecraft; open **MISSIONS**; choose an exercise region and see the next 14 days of physically propagated orbital pass opportunities. Queue observation requests, advance a strategic quarter, and see downlinked data products. Analyse each delivered product for intelligence confidence and short-lived coverage benefits.
 - **Ground constraints:** a physically eligible satellite pass still needs a geometrically visible receiving opportunity, spare network capacity, and functioning infrastructure. Optical acquisitions can fail due to synthetic cloud conditions; SAR and AIS avoid optical cloud failures.
 - **Mission replays (v0.6):** preview an eligible observation from Mission Control, with orbital playback following a simulated observation and downlink window. The receiving-network panel displays hypothetical station capabilities, congestion and health.
+- **Operation First Light (v0.7):** A guided, fictional civilian flood-response first mission teaches selecting the Niger Delta, analysing partner imagery, investing in resilience and choosing a national emergency response. The outcome grades preparedness and response, and updates fictional support and risk. Players can skip, hide or revisit the tutorial. Existing v0.6 saves retain progress and are not forced into the new introduction.
 - **Mobile landscape cockpit:** phone gameplay offers touch orbit/zoom, a compact bottom control dock, device rotation guidance and a fullscreen toggle. Where supported, entering the game requests browser fullscreen and landscape orientation; on iPhone/Safari the browser may not allow forced rotation or fullscreen. The portrait fallback is optional.
 - **Home-screen app:** Chrome/Android can add the page to the home screen; the app manifest requests landscape/fullscreen on launch. This static app still needs an internet connection for its CDN-hosted libraries.
 - **Coverage vs. threats:** regional operational coverage depends on modelled capacity **and recent analysed products**, not on threat-pressure scores. An observation never directly neutralizes a threat.
@@ -54,6 +55,8 @@ node tests/orbital.test.mjs
 node tests/strategy.test.mjs
 node tests/mission.test.mjs
 node tests/replay.test.mjs
+node tests/first_light.test.mjs
+python tests/browser_e2e.py    # Actual Chromium playthrough; requires CDN access
 python tests/mobile_layout.py  # optional: requires playwright + Chromium
 ```
 
@@ -104,10 +107,14 @@ tests/mission.test.mjs    End-to-end mission planning and intelligence productio
 
 ## Project status
 
-**Prototype v0.6:** Shared physical orbital model between both 3D views and mission planning; spacecraft pass forecasts over broad fictional exercise regions; geocentric ground-receiver visibility; queued mission requests; capacity- and health-constrained downlinks; optical cloud scenarios; acquired products; subsequent intelligence analysis; capability and actual delivered observations as distinct coverage measurements; automatic V2 → V3 local save migration; regression tests and GitHub Pages deployment.
+**Prototype v0.7:** Shared physical orbital model between both 3D views and mission planning; spacecraft pass forecasts over broad fictional exercise regions; geocentric ground-receiver visibility; queued mission requests; capacity- and health-constrained downlinks; optical cloud scenarios; acquired products; subsequent intelligence analysis; capability and actual delivered observations as distinct coverage measurements; automatic V2 → V3 local save migration; regression tests and GitHub Pages deployment.
 
-**Next:** live-browser WebGL end-to-end testing, mission tutorial, data queues, better input accessibility, scenario pacing, more responsive navigation, improved graphics quality controls and verified geography.
+**Next:** review actual browser E2E results, improve tutorial clarity, optimize WebGL startup and campaign pacing, and add data-queue mechanics.
 
 **Automated checks:** Unit/syntax tests plus a Playwright mobile CSS layout check at 844×390, 667×375 and 390×844. The mobile test isolates CSS from the game runtime because local browser navigation is blocked in the current development environment. It does not certify full-screen/orientation permissions on particular devices. GitHub Actions validates each release.
 
 **Not affiliated with or endorsed by Nigeria's Defence Space Administration, NASRDA, NIGCOMSAT, or the Armed Forces.**
+
+## Release v0.7
+
+Operation First Light introduction, resumable debrief, V3-to-V4 save migration and browser playthrough tests. Fictional civilian exercise only. Build and test details are available in GitHub Actions. **Browser E2E must pass before merging to main.**

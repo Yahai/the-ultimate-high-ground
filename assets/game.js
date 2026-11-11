@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createCampaign, MAX_TURNS, PROGRAMMES, EVENTS, campaignDateLabel, computeMetrics, programmeRemaining, applyDirective, advanceCampaign, resolveEvent, queueMission, analyseProduct } from './strategy.mjs';
+import { createCampaign, MAX_TURNS, PROGRAMMES, EVENTS, campaignDateLabel, computeMetrics, programmeRemaining, applyDirective, advanceCampaign, resolveEvent, queueMission, analyseProduct, FIRST_LIGHT_STEPS, firstLightProgress, recordFirstLightInspection, skipFirstLight } from './strategy.mjs';
 import { propagateOrbit, orbitPeriodSeconds as physicsPeriod, planMission, MISSION_ASSETS, MISSION_REGIONS, RECEIVERS, formatHours } from './orbital.mjs';
 import { missionReplayFrame, REPLAY_DURATION_S, groundNetworkSnapshot } from './replay.mjs';
 const React = window.React;
@@ -932,7 +932,8 @@ function Scene3D({ engineRef, onPick, mode, layers, labels, speed, commissioned,
 }, []); useEffect(() => { engineRef.current?.configure({ mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask }); }, [mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask]); return React.createElement("div", { ref: el, className: "scene-canvas", "aria-label": "Interactive simulated Nigeria tactical map" }); }
 function Meter({ value, color }) { return React.createElement("div", { className: "meter-track" },
     React.createElement("div", { style: { width: clamp(value, 0, 100) + '%', background: color || '#54e3cb' } })); }
-const SAVE_KEY = 'tuhg-campaign-v3';
+const SAVE_KEY = 'tuhg-campaign-v4';
+const V3_SAVE_KEY = 'tuhg-campaign-v3';
 const PREVIOUS_SAVE_KEY = 'tuhg-campaign-v2';
 const OLD_SAVE_KEY = 'tuhg-campaign-v1';
 function isTouchGameDevice() {
@@ -956,7 +957,7 @@ function exitGameFullscreen() {
 
 function readCampaignSave() {
     try {
-        const raw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(PREVIOUS_SAVE_KEY) || localStorage.getItem(OLD_SAVE_KEY);
+        const raw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(V3_SAVE_KEY) || localStorage.getItem(PREVIOUS_SAVE_KEY) || localStorage.getItem(OLD_SAVE_KEY);
         if (!raw) return null;
         const saved = JSON.parse(raw);
         return saved && typeof saved.turn === 'number' ? saved : null;
@@ -966,6 +967,8 @@ function App() {
     const saved = useMemo(readCampaignSave, []);
     const [campaign, setCampaign] = useState(() => createCampaign(saved));
     const [entered, setEntered] = useState(false);
+    const [firstLightOpen,setFirstLightOpen]=useState(!saved);
+    const [firstLightBriefing,setFirstLightBriefing]=useState(!saved);
     const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
     const [isPortraitPhone, setIsPortraitPhone] = useState(() => isTouchGameDevice() && window.innerHeight > window.innerWidth);
     const [portraitOverride, setPortraitOverride] = useState(false);
@@ -1008,6 +1011,7 @@ function App() {
     const [plannerEpoch, setPlannerEpoch] = useState(0);
     const { budget, bandwidth, support, integrity, turn, threats, fuel, launchFunded, geoExtension, programmes, researchTurn, progress, logs } = campaign;
     const metrics = useMemo(() => computeMetrics(campaign), [campaign]);
+    const firstLight = useMemo(() => firstLightProgress(campaign), [campaign]);
     const ended = Boolean(campaign.outcome);
     const commissioned = useMemo(() => ({ geo: true, ...Object.fromEntries(Object.entries(programmes).map(([id, stage]) => [id, stage === 'deployed'])) }), [programmes]);
     // Save V3, preserving prior campaign versions and supporting new mission data.
@@ -1026,7 +1030,7 @@ function App() {
     const statusLine = selected.type === 'satellite' ? (stage === 'concept' ? selected.status : stage === 'research' ? `R&D IN PROGRESS · ${programmeRemaining(campaign, selected.id)} QUARTERS LEFT` : stage === 'ready' ? 'QUALIFIED · AWAITING COMMISSIONING' : stage === 'deployed' ? 'DEPLOYED · FUTURE SCENARIO' : selected.status) : selected.status;
     const risk = threats[selected.id] ?? selected.risk ?? 0;
     const inform = (msg) => { setToast(msg); clearTimeout(toastTimeout.current); toastTimeout.current = setTimeout(() => setToast(''), 3600); };
-    const choose = (id) => { setSelectedId(id); setTab('Overview'); setDrawerOpen(true); const item = ASSETS.find(a => a.id === id); if (mode === 'Orbit View' && item?.type !== 'satellite') {
+    const choose = (id) => { if(id==='delta'&&campaign.firstLight?.status==='active')setCampaign(s=>recordFirstLightInspection(s,'delta')); setSelectedId(id); setTab('Overview'); setDrawerOpen(true); const item = ASSETS.find(a => a.id === id); if (mode === 'Orbit View' && item?.type !== 'satellite') {
         setMode('War Room 3D');
         engineRef.current?.setMode('War Room 3D');
     } engineRef.current?.focusAsset(id); };
@@ -1036,6 +1040,7 @@ function App() {
         setEntered(true);
         setMode(view);
         setSpeed(0);
+        if(campaign.firstLight?.status==='active'){setFirstLightOpen(true);setFirstLightBriefing(true);}
         if (isTouchGameDevice()) setDrawerOpen(false);
     };
     const toggleFullscreen = () => {
@@ -1043,6 +1048,16 @@ function App() {
         else requestLandscapeFullscreen();
     };
 
+    const firstLightJump=()=>{
+        const step=firstLight.next?.id;
+        setFirstLightBriefing(false);
+        if(step==='inspect'){setMissionOpen(false);choose('delta');setDrawerOpen(true);setTab('Overview');}
+        else if(step==='imagery'||step==='resilience'){setMissionOpen(false);choose('delta');setDrawerOpen(true);setTab('Directives');}
+        else if(step==='advance'){setMissionOpen(false);turnForward();}
+        else if(step==='decision'&&campaign.pendingEvent){setFirstLightOpen(false);}
+        else if(step==='decision')inform('Advance the quarter to receive the national decision.');
+    };
+    const resetFirstLight=()=>{setCampaign(createCampaign());setEntered(true);setFirstLightOpen(true);setFirstLightBriefing(true);setDrawerOpen(false);setMode('War Room 3D');setSpeed(0);};
     const turnForward = () => {
         const result = advanceCampaign(campaign);
         if (result.error) { inform(result.message); setSpeed(0); return; }
@@ -1085,7 +1100,7 @@ function App() {
     };
     const decide = (choiceId) => {
         const result = resolveEvent(campaign, choiceId);
-        if (!result.error) setCampaign(result.state);
+        if (!result.error) {setCampaign(result.state);if(result.state.firstLight?.status==='complete')setFirstLightOpen(true);}
         inform(result.message);
     };
     const openMission = (asset=null,region=null) => {
@@ -1593,6 +1608,32 @@ function App() {
             !drawerOpen && React.createElement("button", { className: "open-drawer", onClick: () => setDrawerOpen(true) },
                 React.createElement(Icon, { name: "panel-right-open", size: 16 }),
                 " DOSSIER"),
+            entered && campaign.firstLight?.status==='active' && firstLightOpen && !campaign.pendingEvent && !missionOpen && React.createElement('section',{className:'firstlight-guide panel',role:'region','aria-label':'Operation First Light tutorial'},
+                React.createElement('div',{className:'firstlight-top'},
+                    React.createElement('span',null,React.createElement(Icon,{name:'sunrise',size:16}),' OPERATION FIRST LIGHT'),
+                    React.createElement('button',{'aria-label':'Hide First Light guide',onClick:()=>setFirstLightOpen(false)},React.createElement(Icon,{name:'x',size:16}))),
+                React.createElement('div',{className:'firstlight-track',role:'progressbar','aria-valuemin':0,'aria-valuemax':firstLight.total,'aria-valuenow':firstLight.finished,'aria-label':'First Light tutorial progress'},
+                    React.createElement('span',{style:{width:`${firstLight.finished/firstLight.total*100}%`}})),
+                React.createElement('small',{className:'firstlight-counter'},`${firstLight.finished} / ${firstLight.total} BRIEFING OBJECTIVES`),
+                firstLightBriefing ? React.createElement(React.Fragment,null,
+                    React.createElement('h2',null,'Protect the Delta'),
+                    React.createElement('p',null,'A fictional seasonal flood threatens civilian infrastructure. With limited sovereign imagery, you must use partner data, invest in resilience, and make a national response decision. Every choice affects the campaign.'),
+                    React.createElement('div',{className:'firstlight-actions'},
+                        React.createElement('button',{className:'primary',onClick:()=>setFirstLightBriefing(false)},'BEGIN OPERATION'),
+                        React.createElement('button',{onClick:()=>{setCampaign(s=>skipFirstLight(s));setFirstLightOpen(false);}},'SKIP TUTORIAL'))) : React.createElement(React.Fragment,null,
+                    React.createElement('h2',null,firstLight.next?.title||'First briefing completed'),
+                    React.createElement('p',null,firstLight.next?.detail||'Review your command log.'),
+                    React.createElement('div',{className:'firstlight-actions'},
+                        React.createElement('button',{className:'primary',onClick:firstLightJump},firstLight.next?.button||'CONTINUE'),
+                        React.createElement('button',{onClick:()=>setFirstLightOpen(false)},'HIDE')))),
+            entered && campaign.firstLight?.status==='active' && !firstLightOpen && !campaign.pendingEvent && React.createElement('button',{className:'firstlight-reopen',onClick:()=>setFirstLightOpen(true)},React.createElement(Icon,{name:'sunrise',size:15}),' FIRST LIGHT'),
+            entered && campaign.firstLight?.status==='complete' && firstLightOpen && React.createElement('section',{className:'firstlight-debrief panel',role:'dialog','aria-label':'First Light mission debrief'},
+                React.createElement('div',{className:'firstlight-kicker'},'MISSION DEBRIEF · FICTIONAL CIVILIAN RESPONSE'),
+                React.createElement('h2',null,`OPERATION ${firstLight.outcome}`),
+                React.createElement('p',null,firstLight.score>=2?'Your preparedness improved the response to the flood scenario. Early evidence and resilience spending made a measurable difference.':'The scenario exposed gaps in preparation. You can still build a stronger space and ground infrastructure during the full campaign.'),
+                React.createElement('div',{className:'firstlight-milestones'},FIRST_LIGHT_STEPS.map(step=>React.createElement('span',{key:step.id,className:firstLight.done[step.id]?'done':'missed'},React.createElement(Icon,{name:firstLight.done[step.id]?'check-circle-2':'circle',size:14}),step.title))),
+                React.createElement('div',{className:'firstlight-actions'},React.createElement('button',{className:'primary',onClick:()=>setFirstLightOpen(false)},'CONTINUE CAMPAIGN'),React.createElement('button',{onClick:()=>{if(window.confirm('Start a new campaign? This will replace the current local save.'))resetFirstLight();}},'REPLAY FIRST LIGHT'))),
+            entered && campaign.firstLight?.status==='complete' && !firstLightOpen && React.createElement('button',{className:'firstlight-reopen',onClick:()=>setFirstLightOpen(true)},React.createElement(Icon,{name:'award',size:15}),' FIRST LIGHT DEBRIEF'),
             toast && React.createElement("div", { className: "toast" },
                 React.createElement(Icon, { name: "check-circle-2", size: 17 }),
                 toast),
@@ -1605,7 +1646,7 @@ function App() {
                         React.createElement("div", null, metrics.score, "/100", React.createElement("small", null, "Strategy score")),
                         React.createElement("div", null, Math.round(metrics.coverage), "%", React.createElement("small", null, "Independent coverage")),
                         React.createElement("div", null, `₦${fmtNum(budget)}B`, React.createElement("small", null, "Funds remaining"))),
-                    React.createElement("button", { onClick: () => { setCampaign(createCampaign()); setSpeed(0); setSimClock(14*60+30); } }, "NEW CAMPAIGN ", React.createElement(Icon, { name: "rotate-cw", size: 17 }))))),
+                    React.createElement("button", { onClick: () => { setCampaign(createCampaign()); setFirstLightOpen(true); setFirstLightBriefing(true); setSpeed(0); setSimClock(14*60+30); } }, "NEW CAMPAIGN ", React.createElement(Icon, { name: "rotate-cw", size: 17 }))))),
             campaign.pendingEvent && !ended && React.createElement("div", { className: "event-decision-overlay", role: "dialog", 'aria-modal': true, 'aria-label': "Strategic event decision" },
                 React.createElement("div", { className: "event-decision-card" },
                     React.createElement("div", { className: "smalloverline" }, `${campaignDateLabel(turn)} · DECISION REQUIRED`),
@@ -1634,7 +1675,7 @@ function App() {
                 React.createElement("div", { className: "splash-kicker" },
                     React.createElement("span", { className: "pulse-dot" }),
                     " NIGERIA \u00B7 2026 BASELINE / FUTURE SPACE STRATEGY ",
-                    React.createElement("span", { className: "splash-pip" }, "// BUILD 06 / MISSION OPS")),
+                    React.createElement("span", { className: "splash-pip" }, "// BUILD 07 / FIRST LIGHT")),
                 React.createElement("div", { className: "splash-logo" },
                     "UNOFFICIAL STRATEGY SIMULATION ",
                     React.createElement("span", null, "\u25C8"),
@@ -1653,6 +1694,9 @@ function App() {
                         React.createElement(Icon, { name: "play", size: 18 }),
                         saved ? " CONTINUE CAMPAIGN " : " ENTER WAR ROOM ",
                         React.createElement(Icon, { name: "arrow-up-right", size: 18 })),
+                    saved && React.createElement("button", { className: "quiet-btn", onClick: () => {resetFirstLight(); if (isTouchGameDevice()) requestLandscapeFullscreen();} },
+                        React.createElement(Icon, { name: "sunrise", size: 18 }),
+                        " NEW CAMPAIGN / FIRST LIGHT"),
                     React.createElement("button", { className: "quiet-btn", onClick: () => enterGame('Orbit View') },
                         React.createElement(Icon, { name: "orbit", size: 18 }),
                         " EXPLORE ORBIT VIEW")),

@@ -27,6 +27,8 @@ jobs:
         run: node tests/mission.test.mjs
       - name: Verify replay timing and scene geometry
         run: node tests/replay.test.mjs
+      - name: Verify Operation First Light and save migration
+        run: node tests/first_light.test.mjs
   mobile-ui:
     runs-on: ubuntu-24.04
     steps:
@@ -40,3 +42,5 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Verify phone landscape and portrait layouts
         run: python tests/mobile_layout.py
+      - name: Play complete introductory mission in real Chromium
+        run: python tests/browser_e2e.py

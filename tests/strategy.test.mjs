@@ -6,7 +6,7 @@ assert.equal(campaignDateLabel(2),'Q1 2027');
 assert.equal(campaignDateLabel(5),'Q4 2027');
 assert.equal(campaignDateLabel(40),'Q3 2036');
 let s=createCampaign();
-assert.equal(s.version,3);
+assert.equal(s.version,4);
 assert.equal(s.turn,1);
 assert.equal(s.commercialCredits,2);
 assert(computeMetrics(s).coverage<25);
