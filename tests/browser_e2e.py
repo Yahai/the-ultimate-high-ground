@@ -100,6 +100,23 @@ try:
         print('PASS browser: reload keeps completed debrief')
         page.close()
         # Landscape phone checks the actual 3D game, not just isolated CSS.
+        # Reproduce disabled WebGL on a desktop browser and require a visible recovery prompt.
+        no_gl=browser.new_context(viewport={'width':1365,'height':768})
+        no_gl.add_init_script("""(() => {
+          const old=HTMLCanvasElement.prototype.getContext;
+          HTMLCanvasElement.prototype.getContext=function(type,...args) {
+            if(type==='webgl'||type==='webgl2'||type==='experimental-webgl')return null;
+            return old.call(this,type,...args);
+          };
+        })()""")
+        fallback_page=no_gl.new_page()
+        fallback_page.goto(url,wait_until='domcontentloaded',timeout=30000)
+        expect(fallback_page.locator('.splash')).to_be_visible(timeout=40000)
+        fallback_page.locator('.enter-btn').click()
+        expect(fallback_page.get_by_role('alert')).to_contain_text('3D VIEW UNAVAILABLE',timeout=25000)
+        expect(fallback_page.get_by_role('button',name='RETRY 3D VIEW')).to_be_visible()
+        no_gl.close()
+        print('PASS browser: WebGL failure produces visible troubleshooting and retry UI')
         context=browser.new_context(viewport={'width':844,'height':390},is_mobile=True,has_touch=True,device_scale_factor=2)
         phone=context.new_page()
         phone.goto(url,wait_until='domcontentloaded',timeout=30000)
