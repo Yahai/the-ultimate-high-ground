@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createCampaign, MAX_TURNS, PROGRAMMES, PROJECTS, MILESTONES, milestoneStatus, projectRemaining, EVENTS, campaignDateLabel, computeMetrics, programmeRemaining, applyDirective, advanceCampaign, resolveEvent, queueMission, analyseProduct, FIRST_LIGHT_STEPS, firstLightProgress, recordFirstLightInspection, skipFirstLight } from './strategy.mjs';
-import { propagateOrbit, orbitPeriodSeconds as physicsPeriod, planMission, MISSION_ASSETS, MISSION_REGIONS, RECEIVERS, formatHours } from './orbital.mjs';
+import { propagateOrbit, orbitPeriodSeconds as physicsPeriod, planMission, MISSION_ASSETS, MISSION_REGIONS, RECEIVERS, elevationDeg, formatHours } from './orbital.mjs';
+import { AFRICA_LAND, AFRICA_BORDERS } from './africa-geography.mjs';
 import { missionReplayFrame, REPLAY_DURATION_S, groundNetworkSnapshot } from './replay.mjs';
 const React = window.React;
 const ReactDOM = window.ReactDOM;
@@ -65,7 +66,7 @@ const geoPos = (lon, lat, y = 0) => new THREE.Vector3((lon - 8.55) * 8.8, y, -(l
 const EARTH_RADIUS_KM = 6371.0;
 const GRAVITATIONAL_MU = 398600.4418;
 const SIDEREAL_DAY_S = 86164.0905;
-const ORBIT_VISUAL_RATE = 60;
+const ORBIT_VISUAL_RATE = 6; // orbit pacing: 10x slower, still accelerated
 const EARTH_ROTATION_RPS = 2 * Math.PI / SIDEREAL_DAY_S;
 const EARTH_J2 = 1.08262668e-3;
 const RAD = Math.PI / 180;
@@ -182,7 +183,9 @@ function makeEarthTexture() {
     c.putImageData(pixels, 0, 0);
     const pt = (lon, lat) => [(lon + 180) / 360 * W, (90 - lat) / 180 * H];
     const drawLand = (points) => { c.beginPath(); points.forEach(([lo, la], i) => { const [x, y] = pt(lo, la); i ? c.lineTo(x, y) : c.moveTo(x, y); }); c.closePath(); let grad = c.createLinearGradient(0, 130, 0, 450); grad.addColorStop(0, '#9b8350'); grad.addColorStop(.5, '#88754e'); grad.addColorStop(.67, '#2d7050'); grad.addColorStop(1, '#435c3f'); c.fillStyle = grad; c.fill(); c.strokeStyle = 'rgba(182,195,123,.5)'; c.lineWidth = 1.6; c.stroke(); };
-    drawLand([[-17, 36], [-3, 36], [10, 38], [25, 33], [34, 31], [34, 22], [42, 13], [51, 12], [43, 0], [42, -12], [35, -20], [32, -29], [19, -35], [13, -35], [11, -29], [6, -16], [9, -4], [8, 4], [2, 5], [-4, 5], [-9, 2], [-15, 9], [-17, 20], [-12, 28]]);
+    for(const poly of AFRICA_LAND)drawLand(poly);
+    c.lineWidth=.7;c.strokeStyle='rgba(179,219,197,.42)';
+    for(const border of AFRICA_BORDERS){c.beginPath();border.forEach(([lo,la],i)=>{const [x,y]=pt(lo,la);i?c.lineTo(x,y):c.moveTo(x,y)});c.stroke();}
     drawLand([[-11, 37], [-11, 45], [3, 50], [14, 54], [30, 55], [40, 47], [35, 37], [13, 35]]);
     drawLand([[43, -13], [50, -13], [50, -24], [45, -27]]);
     c.beginPath();
@@ -215,16 +218,7 @@ class TacticalScene {
         this.scene.fog = new THREE.FogExp2('#020b14', .00155);
         this.camera = new THREE.PerspectiveCamera(46, w / h, .1, 2500);
         this.camera.position.set(127, 117, 156);
-        try {
-            this.renderer = new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
-        } catch(primaryError) {
-            console.warn('Retrying 3D renderer with compatibility settings:',primaryError);
-            try {
-                this.renderer = new THREE.WebGLRenderer({antialias:false,alpha:false,powerPreference:'default',precision:'mediump'});
-            } catch(fallbackError) {
-                throw new Error('WebGL renderer unavailable. '+(fallbackError?.message||primaryError?.message||'Please check browser graphics acceleration.'));
-            }
-        }
+        try { this.renderer = new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'}); } catch(primaryError) { console.warn('Retrying 3D with compatibility settings',primaryError); this.renderer = new THREE.WebGLRenderer({antialias:false,alpha:false,powerPreference:'default',precision:'mediump'}); }
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.matchMedia('(pointer: coarse)').matches ? 1.15 : 1.35));
         this.renderer.setSize(w, h);
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -251,6 +245,7 @@ class TacticalScene {
         this.makeBackground();
         this.makeTable();
         this.makeTerrainDetails();
+        this.makeAfrica();
         this.makeGlobe();
         this.makeMarkers();
         this.makeMissionOverlay();
@@ -370,6 +365,32 @@ class TacticalScene {
         terrainGeo.computeVertexNormals();
         const land = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: .95, metalness: .06 }));
         this.tableGroup.add(land);
+        // Fill the polygon underneath the terrain triangles. An explicit terrain skirt closes
+        // the open edge and prevents underside gaps in oblique camera angles.
+        const underGeo = new THREE.ShapeGeometry(shape);
+        const under = new THREE.Mesh(underGeo, new THREE.MeshStandardMaterial({color:0x163b33,side:THREE.DoubleSide,roughness:1}));
+        under.rotation.x=-Math.PI/2;
+        under.position.y=1.18;
+        this.tableGroup.add(under);
+        const skirtVerts=[];
+        for(let i=0;i<NIGERIA.length-1;i++){
+            const a=NIGERIA[i], b=NIGERIA[i+1];
+            const segmentSteps=Math.max(2,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])*15));
+            for(let j=0;j<segmentSteps;j++){
+                const t0=j/segmentSteps,t1=(j+1)/segmentSteps;
+                const v0=[a[0]+(b[0]-a[0])*t0,a[1]+(b[1]-a[1])*t0];
+                const v1=[a[0]+(b[0]-a[0])*t1,a[1]+(b[1]-a[1])*t1];
+                const top0=geoPos(v0[0],v0[1],1.4+terrainElevation(...v0));
+                const top1=geoPos(v1[0],v1[1],1.4+terrainElevation(...v1));
+                const base0=top0.clone().setY(-2.3),base1=top1.clone().setY(-2.3);
+                [top0,base0,top1,top1,base0,base1].forEach(pt=>skirtVerts.push(pt.x,pt.y,pt.z));
+            }
+        }
+        const skirtGeo=new THREE.BufferGeometry();
+        skirtGeo.setAttribute('position',new THREE.Float32BufferAttribute(skirtVerts,3));
+        skirtGeo.computeVertexNormals();
+        const skirt=new THREE.Mesh(skirtGeo,new THREE.MeshStandardMaterial({color:0x1e7257,metalness:.15,roughness:.8,side:THREE.DoubleSide}));
+        this.tableGroup.add(skirt);
         const points = NIGERIA.map(([lo, la]) => geoPos(lo, la, 1.9 + terrainElevation(lo, la)));
         const outline = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0x6bf4cd, transparent: true, opacity: .9 }));
         this.tableGroup.add(outline);
@@ -391,6 +412,55 @@ class TacticalScene {
             if (segment.length > 1)
                 this.tableGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(segment), new THREE.LineBasicMaterial({ color: 0x6be5ca, transparent: true, opacity: .14 })));
         }
+    }
+    makeAfrica() {
+        // The Africa overview uses a single consistent projection for all country boundaries.
+        // Nigeria remains large and richly detailed in the original tabletop view.
+        const group = new THREE.Group();
+        this.africaGroup=group;
+        this.scene.add(group);
+        const proj=(lon,lat,y=-.7)=>new THREE.Vector3((lon-16)*2.55,y,-(lat-1)*2.55);
+        const deck=new THREE.Mesh(new THREE.CylinderGeometry(114,118,5,96),new THREE.MeshStandardMaterial({color:0x151e26,metalness:.5,roughness:.55}));
+        deck.position.y=-6;
+        group.add(deck);
+        const ocean=new THREE.Mesh(new THREE.CircleGeometry(112,96),new THREE.MeshStandardMaterial({color:0x0a2a34,roughness:.9,metalness:.15}));
+        ocean.rotation.x=-Math.PI/2;ocean.position.y=-3.3;group.add(ocean);
+        const landmat=new THREE.MeshStandardMaterial({color:0x34594f,roughness:.93,metalness:.03,side:THREE.DoubleSide});
+        const coastlineMat=new THREE.LineBasicMaterial({color:0x668b80,transparent:true,opacity:.72});
+        for(const coords of AFRICA_LAND){
+            if(coords.length<3)continue;
+            const sh=new THREE.Shape();
+            coords.forEach(([lon,lat],i)=>{
+                const x=(lon-16)*2.55, z=(lat-1)*2.55;
+                i?sh.lineTo(x,z):sh.moveTo(x,z);
+            });
+            sh.closePath();
+            const mesh=new THREE.Mesh(new THREE.ShapeGeometry(sh),landmat);
+            mesh.rotation.x=-Math.PI/2;mesh.position.y=-2.75;group.add(mesh);
+            const boundary=new THREE.Line(new THREE.BufferGeometry().setFromPoints(coords.map(([lon,lat])=>proj(lon,lat,-2.58))),coastlineMat);
+            group.add(boundary);
+        }
+        const borders=new THREE.LineBasicMaterial({color:0x89afa4,transparent:true,opacity:.58,depthWrite:false});
+        for(const coords of AFRICA_BORDERS){
+            if(coords.length<2)continue;
+            const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(coords.map(([lon,lat])=>proj(lon,lat,-2.52))),borders);
+            group.add(line);
+        }
+        // Nigeria highlighted at its actual geographic location, not an enlarged inset.
+        const ns=new THREE.Shape();
+        NIGERIA.forEach(([lon,lat],i)=>{const x=(lon-16)*2.55,z=(lat-1)*2.55;i?ns.lineTo(x,z):ns.moveTo(x,z)});
+        ns.closePath();
+        const selected=new THREE.Mesh(new THREE.ShapeGeometry(ns),new THREE.MeshBasicMaterial({color:0x138f70,side:THREE.DoubleSide,transparent:true,opacity:.93,depthWrite:false}));
+        selected.rotation.x=-Math.PI/2;selected.position.y=-2.3;group.add(selected);
+        const border=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(NIGERIA.map(([lon,lat])=>proj(lon,lat,-2.13))),new THREE.LineBasicMaterial({color:0x73f5c1,transparent:true,opacity:.95}));
+        group.add(border);
+        const badge=makeLabel('NIGERIA','SPACE PROGRAMME HQ','#6deac3',true);
+        badge.scale.set(9,2.3,1);badge.position.copy(proj(8.55,9.05,4));group.add(badge);
+        for(const [name,lon,lat] of [['ALGERIA',3,28],['EGYPT',30,26],['NIGER',8.5,17.6],['CHAD',18.5,15.4],['CAMEROON',12,5.8],['GHANA',-1.2,7],['KENYA',37.5,.5],['SOUTH AFRICA',24,-28]]){
+            const label=makeLabel(name,'','#a6c8bd',false);
+            label.scale.set(10,1.65,1);label.position.copy(proj(lon,lat,2.4));group.add(label);
+        }
+        group.visible=false;
     }
     makeTerrainDetails() {
         const riverMaterial = new THREE.MeshBasicMaterial({ color: 0x4acdf4, transparent: true, opacity: .74, depthWrite: false });
@@ -513,6 +583,24 @@ class TacticalScene {
             gp.add(holder);
             const glow = glowBall(item.tone, item.type === 'theatre' ? 1.22 : .85);
             holder.add(glow.group);
+            if(item.type==='station'){
+                const mast=new THREE.Group();
+                mast.position.set(0,.65,0);
+                const metal=new THREE.MeshStandardMaterial({color:0x8fabb3,metalness:.78,roughness:.37});
+                const white=new THREE.MeshStandardMaterial({color:0xd9e5dc,metalness:.18,roughness:.61,transparent:true,opacity:.84});
+                const pedestal=new THREE.Mesh(new THREE.CylinderGeometry(.43,.62,1.3,12),metal);
+                pedestal.position.y=.48;mast.add(pedestal);
+                const housing=new THREE.Mesh(new THREE.SphereGeometry(1.65,24,16,0,Math.PI*2,0,Math.PI/2),white);
+                housing.position.y=1.65;mast.add(housing);
+                const dishPivot=new THREE.Group();dishPivot.position.y=2.03;dishPivot.rotation.z=-.32;
+                const dish=new THREE.Mesh(new THREE.SphereGeometry(1.45,24,12,0,Math.PI*2,0,Math.PI*.32),new THREE.MeshStandardMaterial({color:0xbfcbd1,metalness:.6,roughness:.34,side:THREE.DoubleSide}));
+                dishPivot.add(dish);
+                const feed=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,1.2,8),metal);feed.position.y=1.08;dishPivot.add(feed);
+                const feedHead=new THREE.Mesh(new THREE.SphereGeometry(.17,10,8),metal);feedHead.position.y=1.65;dishPivot.add(feedHead);
+                mast.add(dishPivot);
+                mast.scale.setScalar(item.id==='nasrda'?1.45:1.05);
+                holder.add(mast);
+            }
             glow.hit.userData.assetId = item.id;
             this.pickables.push(glow.hit);
             let ring = new THREE.Mesh(new THREE.TorusGeometry(item.type === 'theatre' ? 2.5 : 1.85, .10, 6, 40), new THREE.MeshBasicMaterial({ color: item.tone, transparent: true, opacity: .8, depthWrite: false }));
@@ -609,8 +697,7 @@ class TacticalScene {
         this.reticles = [];
         const geoAsset = SATS[0], geoState = orbitState(geoAsset, 0);
         const geoDirection = orbitToTabletop(geoState.ecef).sub(new THREE.Vector3(0, 2, 0)).normalize();
-        const geoPosition = geoDirection.multiplyScalar(154).add(new THREE.Vector3(0, 2, 0));
-        const geo = satelliteMesh(geoAsset.tone, .72);
+        const geoPosition = geoDirection.multiplyScalar(154).add(new THREE.Vector3(0, 2, 0));        const geo = satelliteMesh(geoAsset.tone, .72);
         geo.position.copy(geoPosition);
         geo.userData.assetId = geoAsset.id;
         geo.rotation.set(.2, -.6, .02);
@@ -625,32 +712,42 @@ class TacticalScene {
         geoSimple.position.copy(geo.position).add(new THREE.Vector3(0, 6, 0));
         this.satGroup.add(geoSimple);
         this.satObjects.push({ sat: geo, rich: geoRich, simple: geoSimple, a: geoAsset, i: 0, isGeo: true });
-        const source = geo.position.clone(), target = new THREE.Vector3(0, 5, 0), diff = source.clone().sub(target), len = diff.length();
-        const beam = new THREE.Mesh(new THREE.ConeGeometry(78, len, 56, 1, true), new THREE.MeshBasicMaterial({ color: 0xae7bdd, transparent: true, opacity: .043, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+        const source = geo.position.clone(), target = new THREE.Vector3(0, 11.0, 0), diff = source.clone().sub(target), len = diff.length();
+        const beam = new THREE.Mesh(new THREE.ConeGeometry(52, len, 56, 1, true), new THREE.MeshBasicMaterial({ color: 0xae7bdd, transparent: true, opacity: .043, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
         beam.position.copy(source).add(target).multiplyScalar(.5);
         beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), diff.normalize());
         this.beamGroup.add(beam);
-        const beamInner = new THREE.Mesh(new THREE.ConeGeometry(61, len, 42, 1, true), new THREE.MeshBasicMaterial({ color: 0xf8bf63, transparent: true, opacity: .065, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+        const beamInner = new THREE.Mesh(new THREE.ConeGeometry(38, len, 42, 1, true), new THREE.MeshBasicMaterial({ color: 0xf8bf63, transparent: true, opacity: .065, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
         beamInner.position.copy(beam.position);
         beamInner.quaternion.copy(beam.quaternion);
         this.beamGroup.add(beamInner);
-        const footprint = new THREE.Mesh(new THREE.CircleGeometry(66, 80), new THREE.MeshBasicMaterial({ color: 0xe6a454, transparent: true, opacity: .045, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+        const footprint = new THREE.Mesh(new THREE.CircleGeometry(45, 80), new THREE.MeshBasicMaterial({ color: 0xe6a454, transparent: true, opacity: .045, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
         footprint.rotation.x = -Math.PI / 2;
-        footprint.position.y = 6.7;
+        footprint.position.y = 10.65;
         footprint.renderOrder = 24;
         this.beamGroup.add(footprint);
-        const footprintOuter = new THREE.Mesh(new THREE.RingGeometry(64, 64.6, 84), new THREE.MeshBasicMaterial({ color: 0xfaca76, transparent: true, opacity: .30, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+        const footprintOuter = new THREE.Mesh(new THREE.RingGeometry(44, 44.6, 84), new THREE.MeshBasicMaterial({ color: 0xfaca76, transparent: true, opacity: .30, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
         footprintOuter.rotation.x = -Math.PI / 2;
-        footprintOuter.position.y = 6.75;
+        footprintOuter.position.y = 10.7;
         footprintOuter.renderOrder = 25;
         this.beamGroup.add(footprintOuter);
         this.geoLinks = [];
         GROUND.filter(g => ['abuja', 'nasrda', 'toro', 'epe'].includes(g.id)).forEach((g, i) => {
-            const p = geoPos(g.lon, g.lat, 5.2 + terrainElevation(g.lon, g.lat));
+            const p = geoPos(g.lon, g.lat, 9.0 + terrainElevation(g.lon, g.lat));
             const link = new THREE.Line(new THREE.BufferGeometry().setFromPoints([source, p]), new THREE.LineDashedMaterial({ color: i % 2 === 0 ? 0xffc679 : 0xbba2ff, dashSize: 2.2, gapSize: 1.35, transparent: true, opacity: .6, depthWrite: false }));
             link.computeLineDistances();
             this.beamGroup.add(link);
             this.geoLinks.push(link);
+        });
+        this.contactLinks=[];
+        SATS.slice(1).forEach((a,k)=>{
+            for(const station of RECEIVERS){
+                const geom=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+                const line=new THREE.Line(geom,new THREE.LineDashedMaterial({color:a.tone,transparent:true,opacity:.9,dashSize:1.7,gapSize:.8,depthTest:false,depthWrite:false}));
+                line.visible=false;line.renderOrder=40;
+                this.beamGroup.add(line);
+                this.contactLinks.push({asset:a,station,line,k,wasVisible:false});
+            }
         });
         SATS.slice(1).forEach((a, k) => {
             const sat = satelliteMesh(a.tone, .52);
@@ -731,8 +828,13 @@ class TacticalScene {
             reticle.visible = activePass;
             beam.cone.visible = activePass;
             beam.line.visible = activePass;
+            if(activePass && !this.lastPass?.[a.id] && this.onPass){
+                this.onPass({kind:'pass',asset:a.name,region:'NIGERIA'});
+            }
+            if(!this.lastPass)this.lastPass={};
+            this.lastPass[a.id]=activePass;
             if (activePass) {
-                const ground = geoPos(s.lon, s.lat, 7.0);
+                const ground = geoPos(s.lon, s.lat, 9.5 + terrainElevation(s.lon,s.lat));
                 reticle.position.copy(ground);
                 outer.scale.setScalar(1 + .035 * Math.sin(this.clock * 2 + k));
                 second.scale.setScalar(1 - .06 * Math.sin(this.clock * 1.8 + k));
@@ -747,6 +849,27 @@ class TacticalScene {
                 pp.needsUpdate = true;
             }
         });
+        for(const link of this.contactLinks){
+            const a=link.asset;
+            const state=orbitState(a,t);
+            const position=orbitToTabletop(state.ecef);
+            const eligible=link.station.level<=this.groundLevel && !!this.commissioned[a.id]
+                && this.layers.beams && this.layers.satellites && nearTableSky(position)
+                && elevationDeg(state.ecef,link.station.lat,link.station.lon)>=12;
+            link.line.visible=eligible;
+            if(eligible){
+                const pt=geoPos(link.station.lon,link.station.lat,10.4+terrainElevation(link.station.lon,link.station.lat));
+                const attr=link.line.geometry.attributes.position;
+                attr.setXYZ(0,position.x,position.y,position.z);
+                attr.setXYZ(1,pt.x,pt.y,pt.z);
+                attr.needsUpdate=true;link.line.computeLineDistances();
+                if(!link.wasVisible && this.onPass && (!this.lastContactAt || this.clock-this.lastContactAt>14)){
+                    this.lastContactAt=this.clock;
+                    this.onPass({kind:'contact',asset:a.name,station:link.station.name});
+                }
+            }
+            link.wasVisible=eligible;
+        }
         this.orbitSats.forEach(({ obj, marker, a }) => {
             const state = orbitState(a, t), p = orbitToGlobe(state.ecef, a);
             obj.position.copy(p);
@@ -789,21 +912,24 @@ class TacticalScene {
             });
         }
     }
-    configure({ mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask }) {
+    configure({ mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask }) {
         if (Number.isFinite(epochSeconds) && this.epochSeconds !== epochSeconds) { this.epochSeconds=epochSeconds; this.orbitalSeconds=epochSeconds; }
         this.layers = layers;
         this.labels = labels;
         this.speed = speed;
         this.orbitalPlay = orbitalPlay !== false;
         this.commissioned = commissioned || { geo: true };
+        this.groundLevel = Number(groundLevel) || 1;
         this.setMissionReplay(replayTask);
         if (this.gantry)
             this.gantry.visible = !!launchFunded;
         if (mode !== this.mode)
             this.setMode(mode);
         const orbitMode = mode === 'Orbit View';
-        this.tableGroup.visible = !orbitMode;
+        const africaMode = mode === 'Africa View';
+        this.tableGroup.visible = !orbitMode && !africaMode;
         this.globeGroup.visible = orbitMode;
+        this.africaGroup.visible = africaMode;
         this.controls.maxPolarAngle = orbitMode ? Math.PI * .98 : Math.PI * .495;
         this.layerGroups.theatres.visible = !!layers.theatres;
         this.layerGroups.targets.visible = !!layers.targets;
@@ -852,6 +978,10 @@ class TacticalScene {
         this.controls.maxPolarAngle = mode === 'Orbit View' ? Math.PI * .98 : Math.PI * .495;
         let pos, tgt;
         switch (mode) {
+            case 'Africa View':
+                pos = [115, 125, 165];
+                tgt = [0, 0, 0];
+                break;
             case 'Orbit View':
                 pos = [66, 100, 210];
                 tgt = [0, 10, 0];
@@ -906,7 +1036,8 @@ class TacticalScene {
         const sat = this.satObjects.find(s => s.a.id === id);
         if (!sat)
             return;
-        let p = sat.sat.position.clone();        this.startTransition(p.clone().add(new THREE.Vector3(26, 19, 29)), p, 850);
+        let p = sat.sat.position.clone();
+        this.startTransition(p.clone().add(new THREE.Vector3(26, 19, 29)), p, 850);
     }
     else {
         if (this.mode === 'Orbit View')
@@ -927,34 +1058,34 @@ class TacticalScene {
         }
     } }); this.renderer.dispose(); this.renderer.domElement.remove(); }
 }
-function Scene3D({ engineRef, onPick, mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask }) { const el = useRef(null); const picker = useRef(onPick); const [graphicsError,setGraphicsError] = useState(null); picker.current = onPick; useEffect(() => {
+function Scene3D({ engineRef, onPick, onPass, mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask }) { const el = useRef(null); const [graphicsError,setGraphicsError]=useState(null); const picker = useRef(onPick); const passListener=useRef(onPass); picker.current = onPick;passListener.current=onPass; useEffect(() => {
     if (!el.current) return;
     let engine;
     try { engine = new TacticalScene(el.current, id => picker.current(id)); }
     catch (error) {
         console.error('Unable to initialize WebGL tactical scene:', error);
         el.current?.replaceChildren();
-        setGraphicsError(error?.message || 'The 3D renderer could not start.');
+        setGraphicsError(error?.message||'The 3D renderer could not start.');
         return;
     }
-    engineRef.current = engine;
+    engineRef.current = engine;engine.onPass=event=>passListener.current?.(event);
     const canvas=engine.renderer.domElement;
-    const onContextLost=(event)=>{event.preventDefault();setGraphicsError('The browser lost the WebGL graphics context. Reload the game; if it repeats, enable browser graphics acceleration and update your graphics driver.');};
-    const onContextRestored=()=>{setGraphicsError(null);};
-    canvas.addEventListener('webglcontextlost',onContextLost,false);
-    canvas.addEventListener('webglcontextrestored',onContextRestored,false);
+    const onContextLost=event=>{event.preventDefault();setGraphicsError('WebGL context lost. Restart browser or update graphics settings.');};
+    const onContextRestored=()=>setGraphicsError(null);
+    canvas.addEventListener('webglcontextlost',onContextLost);
+    canvas.addEventListener('webglcontextrestored',onContextRestored);
     return () => {canvas.removeEventListener('webglcontextlost',onContextLost);canvas.removeEventListener('webglcontextrestored',onContextRestored);engineRef.current = null; engine.dispose();};
 }, []); useEffect(() => {
-    try {engineRef.current?.configure({ mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask });}
-    catch(error){console.error('3D configuration failed',error);setGraphicsError(error?.message||'3D configuration failed.');}
-}, [mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask]);
+    try{engineRef.current?.configure({ mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask });}
+    catch(error){console.error('3D configuration failed',error);setGraphicsError(error?.message||'3D configuration failed');}
+}, [mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask]);
 return React.createElement('div',{className:'scene-canvas-host'},
     React.createElement('div',{ref:el,className:'scene-canvas','aria-label':'Interactive Nigeria 3D tactical map'}),
     graphicsError && React.createElement('section',{className:'graphics-error',role:'alert'},
        React.createElement('h2',null,'3D VIEW UNAVAILABLE'),
-       React.createElement('p',null,'Your browser could not display the scene. This is a graphics compatibility issue, not a campaign failure.'),
+       React.createElement('p',null,'Your browser could not display the scene. Your campaign data remains safe.'),
        React.createElement('p',{className:'graphics-error-detail'},graphicsError),
-       React.createElement('p',null,'In Chrome or Edge, open Settings → System → enable graphics acceleration, restart the browser, and reload the game. If the problem continues, update your graphics driver.'),
+       React.createElement('p',null,'Enable graphics acceleration in browser settings, restart the browser and reload. If the problem persists, update your graphics driver.'),
        React.createElement('button',{onClick:()=>window.location.reload()},'RETRY 3D VIEW'))
 ); }
 function Meter({ value, color }) { return React.createElement("div", { className: "meter-track" },
@@ -1025,7 +1156,10 @@ function App() {
     }, []);
 
     const [selectedId, setSelectedId] = useState('geo');
-    const [drawerOpen, setDrawerOpen] = useState(true);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+    const [briefingOpen,setBriefingOpen]=useState(false);
+    const [passNotice,setPassNotice]=useState(null);
+    const passNoticeTimer=useRef(null);
     const [tab, setTab] = useState('Overview');
     const [simClock, setSimClock] = useState(saved?.simClock ?? 14 * 60 + 30);
     const [toast, setToast] = useState('');
@@ -1044,6 +1178,12 @@ function App() {
     const firstLight = useMemo(() => firstLightProgress(campaign), [campaign]);
     const ended = Boolean(campaign.outcome);
     const commissioned = useMemo(() => ({ geo: true, ...Object.fromEntries(Object.entries(programmes).map(([id, stage]) => [id, stage === 'deployed'])) }), [programmes]);
+    const upcomingPass = useMemo(()=>{
+        const active=Object.keys(MISSION_ASSETS).filter(id=>commissioned[id]);
+        if(!active.length)return null;
+        const items=active.map(id=>planMission(id,id==='ais'?'delta':'savannah',campaign.missionEpochSeconds||0,campaign.groundLevel||1)).filter(q=>!q.error);
+        return items.sort((a,b)=>a.hoursUntilPass-b.hoursUntilPass)[0]||null;
+    },[commissioned,campaign.missionEpochSeconds,campaign.groundLevel]);
     // Save V3, preserving prior campaign versions and supporting new mission data.
     useEffect(() => {
         if (!entered) return;
@@ -1064,7 +1204,8 @@ function App() {
         setMode('War Room 3D');
         engineRef.current?.setMode('War Room 3D');
     } engineRef.current?.focusAsset(id); };
-    const camera = (m) => { setMode(m); setDrawerOpen(m === 'Orbit View' ? false : drawerOpen); };
+    const camera = (m) => { setMode(m); setDrawerOpen(m === 'Orbit View' || m === 'Africa View' ? false : drawerOpen); setBriefingOpen(false); };
+    const passMessage=evt=>{ setPassNotice(evt);clearTimeout(passNoticeTimer.current);passNoticeTimer.current=setTimeout(()=>setPassNotice(null),5400); };
     const enterGame = (view = 'War Room 3D') => {
         if (isTouchGameDevice()) requestLandscapeFullscreen();
         setEntered(true);
@@ -1255,8 +1396,7 @@ function App() {
                         React.createElement("div", { className: "res-value" },
                             support,
                             React.createElement("small", null, "%")))),
-                React.createElement("div", { className: "resource" },
-                    React.createElement("span", { className: "res-icon teal" },
+                React.createElement("div", { className: "resource" },                    React.createElement("span", { className: "res-icon teal" },
                         React.createElement(Icon, { name: "shield-check", size: 21 })),
                     React.createElement("div", null,
                         React.createElement("div", { className: "res-label" }, "SOVEREIGN INTEGRITY"),
@@ -1291,8 +1431,30 @@ function App() {
                         React.createElement(Icon, { name: "skip-forward", size: 17 }),
                         React.createElement("span", null, "TURN"))))),
         React.createElement("main", { className: "game-stage" },
-            React.createElement(Scene3D, { engineRef: engineRef, onPick: choose, mode: mode, layers: layers, labels: labels, speed: entered ? speed : 0, commissioned: commissioned, launchFunded: launchFunded, orbitalPlay: orbitalPlay, epochSeconds: campaign.missionEpochSeconds, replayTask }),
+            React.createElement(Scene3D, { engineRef: engineRef, onPick: choose, onPass: passMessage, mode: mode, layers: layers, labels: labels, speed: entered ? speed : 0, commissioned: commissioned, groundLevel:campaign.groundLevel, launchFunded: launchFunded, orbitalPlay: orbitalPlay, epochSeconds: campaign.missionEpochSeconds, replayTask }),
             React.createElement("div", { className: "scene-vignette" }),
+            entered && React.createElement('nav',{className:'desktop-command-rail','aria-label':'Main command navigation'},
+              [['overview','layout-dashboard','Command overview',()=>{setBriefingOpen(v=>!v);setMissionOpen(false)}],
+               ['map','map','Nigeria tabletop',()=>camera('War Room 3D')],
+               ['africa','earth','Africa continent',()=>camera('Africa View')],
+               ['orbit','orbit','Orbital view',()=>camera('Orbit View')],
+               ['assets','satellite','Selected asset',()=>setDrawerOpen(v=>!v)],
+               ['missions','radio-tower','Mission control',()=>{setMissionOpen(v=>!v);setBriefingOpen(false)}],
+               ['projects','briefcase-business','Strategic projects',()=>{setBriefingOpen(true);setTimeout(()=>document.getElementById('project-portfolio')?.scrollIntoView({behavior:'smooth',block:'start'}),90)}],
+               ['layers','layers-3','Map layers',()=>setOverlayOpen(v=>!v)]].map(([key,icon,title,handler])=>
+                  React.createElement('button',{key,className:'rail-control '+((key==='overview'&&briefingOpen)||(key==='orbit'&&mode==='Orbit View')||(key==='africa'&&mode==='Africa View')||(key==='map'&&mode==='War Room 3D')?'active':''),title,'aria-label':title,onClick:handler},React.createElement(Icon,{name:icon,size:20})))),
+            entered && React.createElement('div',{className:'view-heading'},
+               React.createElement('span',{className:'eyebrow'},mode==='Orbit View'?'ORBITAL NETWORK':mode==='Africa View'?'REGIONAL OVERVIEW':'NATIONAL THEATRE'),
+               React.createElement('strong',null,mode==='Orbit View'?'Earth & Orbit':mode==='Africa View'?'Africa':'Nigeria'),
+               React.createElement('span',{className:'view-heading-detail'}, mode==='Orbit View'?'Satellite trajectories and stations':mode==='Africa View'?'Continental context · Nigeria highlighted':'Strategic Command · War Room')),
+            entered && React.createElement('div',{className:'pass-forecast','aria-label':'Next satellite pass'},
+                React.createElement(Icon,{name:'satellite',size:14}),
+                React.createElement('div',null,React.createElement('span',null,'NEXT OBSERVATION PASS'),
+                    React.createElement('strong',null,upcomingPass?`${SATS.find(a=>a.id===upcomingPass.assetId)?.name||upcomingPass.assetId} · ${formatHours(upcomingPass.hoursUntilPass)} to pass`:'Deploy an EO satellite to plan passes'))),
+            entered && passNotice && React.createElement('div',{className:'pass-alert',role:'status'},
+               React.createElement(Icon,{name:passNotice.kind==='contact'?'radio-tower':'satellite',size:18}),
+               React.createElement('div',null,React.createElement('strong',null,passNotice.kind==='contact'?'LINK ESTABLISHED':'PASS ALERT'),React.createElement('span',null,passNotice.asset+' · '+(passNotice.station||passNotice.region))),
+               React.createElement('button',{'aria-label':'Dismiss pass alert',onClick:()=>setPassNotice(null)},React.createElement(Icon,{name:'x',size:15}))),
             entered && React.createElement("nav", { className: "mobile-bottom-nav", 'aria-label': 'Mobile game controls' },
                 React.createElement("button", { onClick: () => { setDrawerOpen(false); setMissionOpen(false); setOverlayOpen(false); },
                     className: !drawerOpen && !missionOpen && !overlayOpen ? 'active' : '', 'aria-label': 'Show map' },
@@ -1313,7 +1475,7 @@ function App() {
             replayTask&&React.createElement('div',{className:'replay-hud',role:'status'},
                 React.createElement('div',null,React.createElement('small',null,'MISSION REPLAY'),React.createElement('strong',null,`${replayTask.id} · ${replayPhase==='acquisition'?'OBSERVATION':replayPhase==='downlink'?'GROUND DOWNLINK':'REPLAY COMPLETE'}`),React.createElement('span',null,`${MISSION_REGIONS[replayTask.regionId]?.short||'REGION'} · ${replayTask.assetId.toUpperCase()}`)),
                 React.createElement('button',{onClick:()=>{setReplayTask(null);setOrbitalPlay(true)}},'EXIT REPLAY')),
-            React.createElement("aside", { className: "leftpanel panel scroll-area" },
+            React.createElement("aside", { className: "leftpanel panel scroll-area " + (briefingOpen ? "open" : "collapsed") },
                 React.createElement("div", { className: "panel-heading" },
                     React.createElement("span", { className: "smalloverline" }, "OPERATIONAL INTELLIGENCE"),
                     React.createElement("button", { title: "Game briefing and source notes", onClick: () => setEntered(false) },

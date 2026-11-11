@@ -114,7 +114,7 @@ tests/browser_e2e.py       Full browser First Light playthrough
 
 ## Project status
 
-**Prototype v0.8:** Shared physical orbital model between both 3D views and mission planning; spacecraft pass forecasts over broad fictional exercise regions; geocentric ground-receiver visibility; queued mission requests; capacity- and health-constrained downlinks; optical cloud scenarios; acquired products; subsequent intelligence analysis; capability and actual delivered observations as distinct coverage measurements; automatic V2 → V3 local save migration; regression tests and GitHub Pages deployment.
+**Prototype v0.8.1:** Shared physical orbital model between both 3D views and mission planning; spacecraft pass forecasts over broad fictional exercise regions; geocentric ground-receiver visibility; queued mission requests; capacity- and health-constrained downlinks; optical cloud scenarios; acquired products; subsequent intelligence analysis; capability and actual delivered observations as distinct coverage measurements; automatic V2 → V3 local save migration; regression tests and GitHub Pages deployment.
 
 **Next:** reconcile browser-test findings, improve first-session choice explanations, optimize frame-time and WebGL startup, then deepen mission data queues and campaign pacing.
 
@@ -131,3 +131,14 @@ tests/browser_e2e.py       Full browser First Light playthrough
 **Tests:** Includes a strategic portfolio regression suite, First Light campaign, orbital geometry, mission processing, mobile layout and browser playthrough. The browser test also validates that funding an emergency-data project costs the correct amount and persists in the campaign save.
 
 **Next:** Live play balancing, mission and network backlog realism, event consequences conditioned by progress, better mobile discovery of investment portfolio, and simplified asset descriptions.
+
+## Visual Rescue — v0.8.1
+
+- Scene-first desktop navigation; the dashboard is contextual rather than permanently covering the map. Press **Command overview** or **Strategic projects** on the left rail to open it.
+- Three distinct views: high-detail **Nigeria tabletop**, geographically coherent **Africa** with continental coastline and country boundaries, and **Earth & Orbit**. Nigeria is highlighted at its actual location in the Africa view (not enlarged or distorted).
+- Nigeria terrain now has continuous under-fill and sidewalls to avoid exposed open edges from oblique angles; low polygon gaps remain a modelling limitation.
+- Beam footprints were lifted above the highest local relief and reduced to avoid cones intersecting the tabletop; downlink lines are drawn for physically eligible contacts only.
+- Ground-station markers have dish/radome models (illustrative, not surveyed facility depictions); station contacts and observation passes can surface HUD notifications.
+- Orbit animation playback reduced from 60:1 to 6:1; mission pass forecast uses the shared orbital mission planner. A campaign quarter still advances independently.
+- Africa coastline and country boundaries were simplified from the offline low-resolution Basemap geography dataset. Map lines are intended as a stylized game reference rather than a legal boundary survey.
+- Real WebGL screenshot tests inspect Nigeria, Africa and Orbit canvas graphics, and test the no-WebGL fallback.

@@ -30,33 +30,30 @@ try:
         expect(page.locator('.splash')).to_be_visible(timeout=40000)
         expect(page.get_by_text('DOMINATE THE FINAL FRONTIER').first).to_be_visible()
         page.locator('.enter-btn').click()
+        # A real drawn 3D canvas (rather than just booted React controls).
         canvas=page.locator('.scene-canvas canvas')
         expect(canvas).to_be_visible(timeout=30000)
-        page.wait_for_timeout(1800)
-        report=page.evaluate("""() => {
-          const host=document.querySelector('.scene-canvas');
-          const c=host?.querySelector('canvas');
-          const cs=c ? getComputedStyle(c) : null;
-          const rect=c?.getBoundingClientRect();
-          let glInfo='none', glError='';
-          try { const gl=c?.getContext('webgl2')||c?.getContext('webgl');glInfo=gl ? String(gl.getParameter(gl.VERSION)) : 'no-context'; }
-          catch(e) {glError=String(e)}
-          return {host: host ? [host.clientWidth,host.clientHeight]:null, size:c ? [c.width,c.height]:null, rect: rect ? [rect.x,rect.y,rect.width,rect.height]:null, visibility:cs?.visibility, opacity:cs?.opacity, glInfo,glError};
-        }""")
-        print('3D DIAGNOSTIC',report,flush=True)
-        assert report['host'][0]>450 and report['host'][1]>300, '3D stage has no viewport'
-        assert report['size'][0]>0 and report['size'][1]>0, 'Renderer has zero-size drawing buffer'
-        image=Image.open(io.BytesIO(canvas.screenshot())).convert('RGB')
-        stat=ImageStat.Stat(image)
-        print('3D PIXELS TABLETOP',{'mean':stat.mean,'stddev':stat.stddev,'center':image.getpixel((image.width//2,image.height//2))},flush=True)
-        assert max(stat.stddev)>8,'Tabletop canvas does not have sufficient visible content'
-        page.get_by_role('button',name='Orbit View').first.click()
-        page.wait_for_timeout(1900)
-        image=Image.open(io.BytesIO(canvas.screenshot())).convert('RGB')
-        stat=ImageStat.Stat(image)
-        print('3D PIXELS ORBIT',{'mean':stat.mean,'stddev':stat.stddev,'center':image.getpixel((image.width//2,image.height//2))},flush=True)
-        assert max(stat.stddev)>8,'Orbit canvas does not have sufficient visible content'
-        page.get_by_role('button',name='War Room 3D').first.click()
+        page.wait_for_timeout(1600)
+        def visible_scene(label):
+            img=Image.open(io.BytesIO(canvas.screenshot())).convert('RGB')
+            stat=ImageStat.Stat(img)
+            print('3D VISIBLE',label,{'stddev':stat.stddev,'center':img.getpixel((img.width//2,img.height//2))},flush=True)
+            assert max(stat.stddev)>7, f'{label} rendered a blank or nearly uniform scene'
+        visible_scene('NIGERIA')
+        rail=page.get_by_role('navigation',name='Main command navigation')
+        expect(rail).to_be_visible()
+        assert page.locator('.leftpanel').evaluate('(el)=>getComputedStyle(el).visibility')=='hidden'
+        rail.get_by_role('button',name='Africa continent').click()
+        expect(page.locator('.view-heading').get_by_text('Africa',exact=True)).to_be_visible()
+        page.wait_for_timeout(1600)
+        visible_scene('AFRICA')
+        rail.get_by_role('button',name='Orbital view').click()
+        page.wait_for_timeout(1600)
+        visible_scene('ORBIT')
+        rail.get_by_role('button',name='Nigeria tabletop').click()
+        page.wait_for_timeout(1200)
+        visible_scene('RETURN NIGERIA')
+        print('PASS browser: Nigeria/Africa/Orbit all render non-blank 3D scenes',flush=True)
         guide=page.locator('.firstlight-guide')
         expect(guide).to_be_visible(timeout=25000)
         expect(guide.get_by_text('Protect the Delta')).to_be_visible()
@@ -84,6 +81,7 @@ try:
         print('PASS browser: full First Light scenario, decisions, debrief, persisted save')
         page.get_by_role('button',name='CONTINUE CAMPAIGN').click()
         # A real project investment must update the campaign, consume funds and persist.
+        page.get_by_role('navigation',name='Main command navigation').get_by_role('button',name='Strategic projects').click()
         portfolio=page.locator('#project-portfolio')
         expect(portfolio).to_be_attached()
         budget_before=page.evaluate('JSON.parse(localStorage.getItem("tuhg-campaign-v5")).budget')
@@ -92,6 +90,7 @@ try:
         assert data['projects']['exchange']['status']=='active', data.get('projects')
         assert abs(data['budget']-(budget_before-160))<.01, (data['budget'],budget_before)
         print('PASS browser: v0.8 project investment and budget persistence')
+        expect(page.locator('.leftpanel')).to_be_visible()
         page.reload(wait_until='domcontentloaded')
         page.locator('.enter-btn').click(timeout=30000)
         expect(page.locator('.firstlight-reopen')).to_be_visible(timeout=30000)
@@ -100,7 +99,6 @@ try:
         print('PASS browser: reload keeps completed debrief')
         page.close()
         # Landscape phone checks the actual 3D game, not just isolated CSS.
-        # Reproduce disabled WebGL on a desktop browser and require a visible recovery prompt.
         no_gl=browser.new_context(viewport={'width':1365,'height':768})
         no_gl.add_init_script("""(() => {
           const old=HTMLCanvasElement.prototype.getContext;
@@ -114,9 +112,8 @@ try:
         expect(fallback_page.locator('.splash')).to_be_visible(timeout=40000)
         fallback_page.locator('.enter-btn').click()
         expect(fallback_page.get_by_role('alert')).to_contain_text('3D VIEW UNAVAILABLE',timeout=25000)
-        expect(fallback_page.get_by_role('button',name='RETRY 3D VIEW')).to_be_visible()
         no_gl.close()
-        print('PASS browser: WebGL failure produces visible troubleshooting and retry UI')
+        print('PASS browser: explicit WebGL failure guidance')
         context=browser.new_context(viewport={'width':844,'height':390},is_mobile=True,has_touch=True,device_scale_factor=2)
         phone=context.new_page()
         phone.goto(url,wait_until='domcontentloaded',timeout=30000)

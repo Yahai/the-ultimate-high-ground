@@ -226,11 +226,112 @@
 @media (orientation:landscape) and (max-height:520px) and (pointer:coarse){
   .portfolio-jump{min-height:44px}.portfolio-action button{min-height:44px}.portfolio-project{padding:10px}
 }
-/* Renderer compatibility feedback: always visible above stage overlays. */
-.scene-canvas-host{position:absolute;inset:0;z-index:0}
-.scene-canvas-host>.scene-canvas{position:absolute;inset:0}
+
+/* ────────────────────────────────────────────────────────────
+   VISUAL RESCUE v0.8.1 — scene first, functional, intentional.
+   Contextual panels, a compact rail and legible strategic cards.
+   ──────────────────────────────────────────────────────────── */
+:root{
+ --ui-bg:#0c1219;--ui-surface:#111c26;--ui-surface-hi:#17232f;
+ --ui-edge:rgba(166,194,204,.17);--ui-text:#edf3f1;
+ --ui-muted:#9eafbb;--ui-emerald:#70dfb1;--ui-amber:#f3c783;
+ --green:var(--ui-emerald);--muted:var(--ui-muted);--panel:rgba(13,23,32,.97);
+}
+body{background:#070d13;color:var(--ui-text);-webkit-font-smoothing:antialiased}
+.app-shell{background:#071018}
+.topbar{height:65px;gap:12px;padding:0 20px;background:rgba(11,19,28,.97);border-bottom:1px solid var(--ui-edge);box-shadow:0 8px 32px #02091254}
+.topbar:after{height:0}
+.brand{min-width:244px;gap:12px;border-right:1px solid var(--ui-edge)}
+.brand-top{font-size:12px;letter-spacing:.8px;font-weight:860}
+.brand-sub{font-size:9px;letter-spacing:1.8px;color:var(--ui-emerald)}
+.resources{gap:7px}
+.resource{height:45px;background:#101d27;border:1px solid var(--ui-edge);border-radius:8px;max-width:167px;padding:6px 11px}
+.resource .res-icon svg{width:16px;height:16px}
+.res-label{font-size:9px;letter-spacing:.7px;color:#96abb4}
+.res-value{font-size:17px;color:#edf5f5;letter-spacing:-.4px}
+.resource small{font-size:10px}
+.transport{gap:6px}
+.transport button{height:38px;min-width:38px;border-radius:7px;background:#152530;border:1px solid var(--ui-edge);font-weight:750}
+.transport button.current{background:#1d3c41;border-color:#51978e}
+.transport .advance{background:#1a7457;border-color:#53b894;color:#f5fff6;font-size:10px;padding:0 14px}
+.turn-clock{padding-right:13px}.turn-clock span{font-size:13px}.turn-clock small{font-size:10px}
+.game-stage{inset:65px 0 0;background:radial-gradient(ellipse at center,#122a31 0%,#09131d 56%,#060b12 100%)}
+.scene-vignette{background:radial-gradient(ellipse at center,transparent 46%,rgba(1,7,11,.24) 79%,rgba(0,4,8,.59) 100%)}
+.panel{border:1px solid var(--ui-edge);background:rgba(12,22,32,.95);border-radius:13px;box-shadow:0 18px 55px rgba(0,0,0,.39);backdrop-filter:blur(18px)}
+/* Slim primary navigation frees the globe/map and replaces permanent bulky panels. */
+.desktop-command-rail{position:absolute;left:17px;top:23px;bottom:auto;z-index:17;display:flex;flex-direction:column;gap:7px;padding:9px;background:rgba(13,24,34,.95);border:1px solid var(--ui-edge);border-radius:13px;box-shadow:0 14px 48px #0007}
+.rail-control{display:grid;place-items:center;flex-shrink:0;width:43px;height:43px;border:0;border-radius:9px;background:transparent;color:#9fb4bd;transition:background .16s,color .16s}
+.rail-control:hover,.rail-control:focus-visible{background:#293b43;color:#f3fff7}
+.rail-control.active{background:#214b43;color:#86e6bf;box-shadow:inset 3px 0 0 #82dfb3}
+.view-heading{position:absolute;z-index:5;top:22px;left:100px;pointer-events:none;display:flex;flex-direction:column;gap:4px;text-shadow:0 3px 15px #03080ecc}
+.view-heading .eyebrow{font-size:10px;letter-spacing:1.9px;font-weight:800;color:#8edcbd}
+.view-heading strong{font-size:clamp(27px,2.55vw,42px);letter-spacing:-1.5px;line-height:1.07;font-weight:760;color:#f4f7f5}
+.view-heading-detail{font-size:12px;color:#c0d0d3;letter-spacing:.1px}
+.pass-alert{position:absolute;z-index:31;left:50%;top:24px;transform:translateX(-50%);width:max-content;max-width:calc(100% - 240px);display:flex;align-items:center;gap:12px;padding:11px 15px;color:#edfdf5;border:1px solid rgba(117,226,183,.5);background:rgba(12,36,39,.97);border-radius:11px;box-shadow:0 12px 50px #0008}
+.pass-alert>svg{color:#8ce8c1;flex:none}.pass-alert>div{flex:1}.pass-alert strong{font-size:11px;letter-spacing:1px;display:block}.pass-alert span{font-size:11px;display:block;color:#b2d6d2;margin-top:4px}
+.pass-alert button{border:0;background:transparent;color:#b6cac9;display:grid;place-items:center}
+/* Command dashboard is contextual. Keep DOM mounted so progress and playbook persist. */
+.leftpanel{left:80px;top:22px;bottom:19px;width:min(350px,calc(100vw - 175px));min-height:0;z-index:16;padding:20px 18px;transition:transform .23s cubic-bezier(.2,.7,.3,1),opacity .2s,visibility .2s;box-shadow:0 18px 65px #0009}
+.leftpanel.collapsed{transform:translateX(-135%);opacity:0;visibility:hidden;pointer-events:none}
+.leftpanel.open{transform:none;opacity:1;visibility:visible}
+.leftpanel .panel-heading{margin-bottom:15px}.leftpanel .smalloverline{font-size:10px;letter-spacing:1.6px}
+.leftpanel .section-label{font-size:10px;letter-spacing:1.1px}
+.leftpanel .theatre-name{font-size:12px;line-height:1.5}
+.leftpanel .theatre-info,.leftpanel .strategy-cell small,.leftpanel .strategy-cashflow,.leftpanel .portfolio-hint,.leftpanel .portfolio-project p,.leftpanel .milestone-card small{font-size:11px;line-height:1.55}
+.leftpanel .strategy-cell b{font-size:17px}
+.leftpanel .portfolio-project,.leftpanel .strategy-cell{background:#16252f;border:1px solid var(--ui-edge);border-radius:9px}
+.leftpanel .portfolio-project{padding:15px;margin:11px 0}
+.leftpanel .portfolio-project-head b{font-size:13px;letter-spacing:0}
+.leftpanel .portfolio-project-head small,.leftpanel .portfolio-impact,.leftpanel .portfolio-action span{font-size:11px}
+.leftpanel .portfolio-action>span small{font-size:10px}
+.leftpanel .milestone-card b{font-size:12px}
+.leftpanel button:not(.rail-control){transition:background .16s,border .16s,transform .16s}
+.leftpanel .portfolio-action button{font-size:11px;min-height:40px}
+.rightpanel,.dossier{border-color:var(--ui-edge);background:rgba(13,23,32,.96)}
+.dossier h2,.mission-heading h2{letter-spacing:-.55px}
+.dossier-body,.mission-control{font-size:13px;line-height:1.6}
+.mission-control{z-index:19;top:31px;bottom:20px;width:min(610px,calc(100% - 165px));left:calc(50% + 20px);padding:24px;border-radius:13px}
+.mission-heading h2{font-size:24px}.mission-intro,.mission-receiver,.mission-note,.ground-station-row small{font-size:12px}
+.mission-stats small{font-size:10px}.mission-stats b{font-size:16px}.mission-stats>div{border-radius:8px;padding:12px}
+.mission-entry{padding:14px;border-radius:9px;background:#152631;border-color:var(--ui-edge)}
+.mission-entry b,.ground-station-row b{font-size:12px}.mission-entry small{font-size:11px}
+.mission-actions button,.mission-entry button{font-size:11px;min-height:42px}
+.mission-controls label{font-size:11px}.mission-controls select{font-size:13px;min-height:44px}
+.portfolio-project-head b,.portfolio-project p,.milestone-card b{word-break:normal}
+.workbench-toolbar{border-radius:10px;background:rgba(13,23,32,.72);border-color:var(--ui-edge);box-shadow:0 10px 36px #0006}
+.workbench-toolbar button{border-radius:7px}
+.firstlight-guide,.firstlight-debrief,.event-decision-card{background:linear-gradient(152deg,#132a32,#0d1724);border-color:rgba(129,183,175,.42);border-radius:16px}
+.firstlight-guide h2,.event-decision-card h2{letter-spacing:-.6px}
+.event-choices button{background:#172c36;border-color:var(--ui-edge);border-radius:9px}
+.event-choices button strong{font-size:13px}.event-choices button small{font-size:11px}
+.firstlight-guide p{font-size:13px}
+.firstlight-top{letter-spacing:1px}
+/* Keep game usable on laptops and the dedicated mobile navigation unaffected. */
+@media(max-width:1200px){.resources .resource:nth-child(3),.resources .resource:nth-child(4){display:none}.leftpanel{width:min(340px,calc(100vw - 160px))}}
+@media(max-width:900px){
+ .desktop-command-rail{display:none}
+ .view-heading{left:16px;top:16px}.view-heading strong{font-size:22px}
+ .view-heading-detail{display:none}
+ .leftpanel{left:8px;top:78px;bottom:calc(63px + env(safe-area-inset-bottom));width:min(335px,calc(100% - 16px))}
+ .leftpanel.collapsed{transform:translateX(-125%)}
+ .mission-control{left:50%;top:100px;width:min(520px,calc(100% - 20px))}
+ .pass-alert{max-width:calc(100% - 26px);top:72px}
+}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:650px){
+ .topbar{height:54px;padding:0 8px}.game-stage{inset:54px 0 0}
+ .view-heading{top:7px;left:10px}.view-heading strong{font-size:17px}.view-heading .eyebrow{font-size:8px}
+ .mission-control{top:60px;bottom:6px;width:min(520px,60vw);left:50%;padding:12px}
+ .leftpanel{top:62px;bottom:calc(59px + env(safe-area-inset-bottom));width:min(330px,calc(100% - 16px))}
+ .pass-alert{top:52px;padding:7px 11px}
+}
+@media(prefers-reduced-motion:reduce){.rail-control,.leftpanel,.leftpanel button{transition:none}}
+
+.scene-canvas-host{position:absolute;inset:0;z-index:0}.scene-canvas-host>.scene-canvas{position:absolute;inset:0}
 .graphics-error{position:absolute;z-index:45;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100% - 28px));max-height:calc(100% - 26px);overflow:auto;padding:24px;color:#e8fcff;background:rgba(4,18,30,.97);border:1px solid #5ab8c5;border-radius:12px;box-shadow:0 15px 80px #000c;font:13px/1.6 system-ui,sans-serif}
 .graphics-error h2{color:#75f3d1;font-size:17px;margin:0 0 12px;letter-spacing:.9px}
-.graphics-error p{margin:8px 0}
-.graphics-error-detail{font-family:ui-monospace,monospace;color:#ffbf93;overflow-wrap:anywhere}
+.graphics-error p{margin:8px 0}.graphics-error-detail{font-family:ui-monospace,monospace;color:#ffbf93;overflow-wrap:anywhere}
 .graphics-error button{background:#11755d;color:white;border:1px solid #55e1b5;padding:11px 17px;border-radius:8px;min-height:44px;font-weight:800;margin-top:11px}
+.pass-forecast{position:absolute;z-index:6;bottom:28px;left:101px;display:flex;align-items:center;gap:10px;padding:11px 14px;background:rgba(13,23,31,.83);border:1px solid rgba(111,164,160,.28);border-radius:9px;pointer-events:none;backdrop-filter:blur(13px)}
+.pass-forecast svg{color:#73d8b4}.pass-forecast span{display:block;font-size:9px;font-weight:800;letter-spacing:1.2px;color:#8daeb2}.pass-forecast strong{display:block;font-size:12px;margin-top:4px;color:#e8f7f2;font-weight:650}
+@media(max-width:900px){.pass-forecast{left:14px;bottom:calc(66px + env(safe-area-inset-bottom));padding:8px 11px}.pass-forecast strong{font-size:10px}}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:650px){.pass-forecast{left:8px;bottom:calc(60px + env(safe-area-inset-bottom));max-width:45%;padding:6px 9px}.pass-forecast strong{font-size:9px}.pass-forecast span{font-size:8px}}
