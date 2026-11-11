@@ -1222,8 +1222,8 @@ function App() {
     const firstLightJump=()=>{
         const step=firstLight.next?.id;
         setFirstLightBriefing(false);
-        if(step==='inspect'){setMissionOpen(false);choose('delta');setDrawerOpen(true);setTab('Overview');}
-        else if(step==='imagery'||step==='resilience'){setMissionOpen(false);choose('delta');setDrawerOpen(true);setTab('Directives');}
+        if(step==='inspect'){setMissionOpen(false);setBriefingOpen(true);choose('delta');setDrawerOpen(true);setTab('Overview');}
+        else if(step==='imagery'||step==='resilience'){setMissionOpen(false);setBriefingOpen(true);choose('delta');setDrawerOpen(true);setTab('Directives');}
         else if(step==='advance'){setMissionOpen(false);turnForward();}
         else if(step==='decision'&&campaign.pendingEvent){setFirstLightOpen(false);}
         else if(step==='decision')inform('Advance the quarter to receive the national decision.');
