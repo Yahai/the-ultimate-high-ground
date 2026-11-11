@@ -20,7 +20,7 @@ thread.start()
 url=f'http://127.0.0.1:{server.server_address[1]}/'
 try:
     with sync_playwright() as p:
-        browser=p.chromium.launch(headless=True,args=[
+        browser=p.chromium.launch(headless=True,executable_path=shutil.which('google-chrome') or shutil.which('chromium') or None,args=[
             '--no-sandbox','--disable-dev-shm-usage','--enable-webgl',
             '--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         page=browser.new_page(viewport={'width':1450,'height':920},device_scale_factor=1)
