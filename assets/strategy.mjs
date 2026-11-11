@@ -1,4 +1,5 @@
 import { planMission, MISSION_ASSETS, MISSION_REGIONS, MISSION_HORIZON_S, DAY_S } from './orbital.mjs';
+import { cloudCover, campaignQuarter } from './ecoregions.mjs';
 /** The Ultimate High Ground — deterministic, fictional strategic simulation.
  * This pure module contains no DOM, React, Three.js or military operational data.
  * All money values are game billions of naira; satellite/programme data are synthetic.
@@ -230,9 +231,12 @@ function processMissionQueue(s){
     else if(s.bandwidth<task.processing)failure='processing capacity unavailable';
     else if(downlinks>=maxDownlinks)failure='receiving network oversubscribed';
     else if(task.assetId==='sat3'){
-      // Deterministic fictional weather; radar/AIS are not affected by optical cloud cover.
-      const weather=Math.abs(Math.sin(task.passSeconds*.000032+THEATRE_IDS.indexOf(task.regionId)*1.63));
-      if(weather>.84)failure='optical scene cloud-obscured';
+      // Optical acquisitions share the game's quarterly cloud climatology.
+      // SAR/AIS remain unaffected by optical cloud obstruction.
+      const region=MISSION_REGIONS[task.regionId];
+      const cover=cloudCover(region.lon,region.lat,campaignQuarter(s.turn),.5);
+      const sample=Math.abs(Math.sin(task.passSeconds*.000032+THEATRE_IDS.indexOf(task.regionId)*1.63));
+      if(sample<Math.min(.68,Math.max(.06,cover*.72)))failure='optical scene cloud-obscured';
     }
     if(failure){task.status='missed';task.reason=failure;log(s,`${task.id}: no usable observation — ${failure}.`,'warning');}
     else{

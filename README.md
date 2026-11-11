@@ -142,3 +142,14 @@ tests/browser_e2e.py       Full browser First Light playthrough
 - Orbit animation playback reduced from 60:1 to 6:1; mission pass forecast uses the shared orbital mission planner. A campaign quarter still advances independently.
 - Africa coastline and country boundaries were simplified from the offline low-resolution Basemap geography dataset. Map lines are intended as a stylized game reference rather than a legal boundary survey.
 - Real WebGL screenshot tests inspect Nigeria, Africa and Orbit canvas graphics, and test the no-WebGL fallback.
+
+
+## Premium Terrain & Ground Links (v0.8.2/0.8.3)
+
+- Nigeria terrain uses blended ecological colours, smoothed mesh normals, and altitude-aware rocky highlands rather than hard-edged latitude bands. It is visual art direction, **not** an authoritative land-cover or vegetation raster.
+- Clouds are soft, semi-transparent 3D layers whose coverage changes with the campaign quarter. The Q3 wet season is cloudier than Q1, and optical mission failures now share this seasonal climatology; radar and AIS remain unaffected. Weather is deterministic game climatology, not a live forecast.
+- Ground stations feature a paraboloid reflector, feedhorn, supporting struts, az-el mount, and protective radome enclosure at selected facilities. GEO links anchor to the actual world-space feedhorn endpoint, with animated packets travelling toward the spacecraft.
+- A LEO receiving dish tracks an eligible active downlink; otherwise GEO dishes return to the near-fixed NigComSat-1R bearing. NigComSat's Earth-fixed position and globe attitude are stationary throughout playback.
+- Continental country boundaries remain in the Africa view; this pass enhances Nigeria's detailed tabletop terrain.
+
+Automated checks: `node tests/ecoregions.test.mjs` plus the existing project and browser suites.

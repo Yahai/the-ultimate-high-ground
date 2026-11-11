@@ -12,7 +12,7 @@ assert(game.includes('skirtGeo.computeVertexNormals()'),'Terrain edges have no s
 assert(game.includes('this.contactLinks.push'),'Missing station link geometry');
 assert(game.includes('elevationDeg(state.ecef'),'Contact lines must use geometric visibility');
 assert(game.includes('LINK ESTABLISHED') && game.includes('PASS ALERT'),'Missing pass/contact notifications');
-assert(game.includes('new THREE.SphereGeometry(1.65'),'Ground station radomes not modeled');
+assert(game.includes('new THREE.SphereGeometry(2.43'),'Ground station radomes not modeled');
 assert(game.includes('const ORBIT_VISUAL_RATE = 6;'),'Orbital progression not slowed');
 assert(game.includes('NEXT OBSERVATION PASS'),'Missing orbit pass forecast HUD');
 assert(css.includes('.desktop-command-rail'),'Missing desktop navigation');

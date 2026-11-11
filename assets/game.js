@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createCampaign, MAX_TURNS, PROGRAMMES, PROJECTS, MILESTONES, milestoneStatus, projectRemaining, EVENTS, campaignDateLabel, computeMetrics, programmeRemaining, applyDirective, advanceCampaign, resolveEvent, queueMission, analyseProduct, FIRST_LIGHT_STEPS, firstLightProgress, recordFirstLightInspection, skipFirstLight } from './strategy.mjs';
 import { propagateOrbit, orbitPeriodSeconds as physicsPeriod, planMission, MISSION_ASSETS, MISSION_REGIONS, RECEIVERS, elevationDeg, formatHours } from './orbital.mjs';
 import { AFRICA_LAND, AFRICA_BORDERS } from './africa-geography.mjs';
+import { biomeBlend, cloudCover, cloudOpacity, campaignQuarter, QUARTER_NAMES } from './ecoregions.mjs';
 import { missionReplayFrame, REPLAY_DURATION_S, groundNetworkSnapshot } from './replay.mjs';
 const React = window.React;
 const ReactDOM = window.ReactDOM;
@@ -245,6 +246,7 @@ class TacticalScene {
         this.makeBackground();
         this.makeTable();
         this.makeTerrainDetails();
+        this.makeCloudLayer();
         this.makeAfrica();
         this.makeGlobe();
         this.makeMarkers();
@@ -334,36 +336,34 @@ class TacticalScene {
         side.rotation.x = -Math.PI / 2;
         side.position.y = -1.6;
         this.tableGroup.add(side);
-        const verts = [], colors = [], normals = [];
-        const nx = 205, ny = 164, lo0 = 2.65, lo1 = 14.63, la0 = 4.20, la1 = 13.95;
-        const p = (lon, lat) => geoPos(lon, lat, 1.4 + terrainElevation(lon, lat));
-        const col = (lon, lat) => { let h = terrainElevation(lon, lat), n = noise(lon * 4.8, lat * 4.8); let c = new THREE.Color(); if (lat < 6.4)
-            c.setRGB(.035 + n * .06, .31 + n * .1, .17 + n * .035);
-        else if (lat > 11.7)
-            c.setRGB(.27 + n * .07, .32 + n * .06, .16 + n * .02);
-        else
-            c.setRGB(.075 + n * .06, .34 + n * .11, .18 + n * .04); c.multiplyScalar(1 + Math.min(h, 3.5) * .07); return c; };
-        const pushTri = (a, b, c) => { for (let v of [a, b, c]) {
-            const vv = p(v[0], v[1]);
-            verts.push(vv.x, vv.y, vv.z);
-            const co = col(v[0], v[1]);
-            colors.push(co.r, co.g, co.b);
-        } };
-        for (let i = 0; i < nx; i++) {
-            const l = lo0 + (lo1 - lo0) * i / nx, lr = lo0 + (lo1 - lo0) * (i + 1) / nx;
-            for (let j = 0; j < ny; j++) {
-                const a = la0 + (la1 - la0) * j / ny, ar = la0 + (la1 - la0) * (j + 1) / ny;
-                if (!insidePolygon((l + lr) * .5, (a + ar) * .5))
-                    continue;
-                pushTri([l, a], [lr, ar], [l, ar]);
-                pushTri([l, a], [lr, a], [lr, ar]);
+        // Smooth indexed terrain: shared vertices produce continuous normals and no hard biome bands.
+        const verts=[],colors=[],indices=[],vertices=new Map();
+        const nx=205,ny=164,lo0=2.65,lo1=14.63,la0=4.20,la1=13.95;
+        const vertex=(lo,la,i,j)=>{
+            const key=`${i},${j}`;
+            if(vertices.has(key))return vertices.get(key);
+            const h=terrainElevation(lo,la);
+            const pt=geoPos(lo,la,1.4+h);
+            const pattern=noise(lo*3.6,la*4.4)*.65+noise(lo*11,la*10)*.35;
+            const color=biomeBlend(lo,la,h,pattern);
+            const id=verts.length/3;
+            verts.push(pt.x,pt.y,pt.z);colors.push(...color);vertices.set(key,id);
+            return id;
+        };
+        for(let i=0;i<nx;i++){
+            const lo=lo0+(lo1-lo0)*i/nx,hi=lo0+(lo1-lo0)*(i+1)/nx;
+            for(let j=0;j<ny;j++){
+                const lat=la0+(la1-la0)*j/ny,top=la0+(la1-la0)*(j+1)/ny;
+                if(!insidePolygon((lo+hi)/2,(lat+top)/2))continue;
+                const a=vertex(lo,lat,i,j),b=vertex(hi,lat,i+1,j),c=vertex(lo,top,i,j+1),d=vertex(hi,top,i+1,j+1);
+                indices.push(a,d,c,a,b,d);
             }
         }
-        const terrainGeo = new THREE.BufferGeometry();
-        terrainGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-        terrainGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        terrainGeo.computeVertexNormals();
-        const land = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: .95, metalness: .06 }));
+        const terrainGeo=new THREE.BufferGeometry();
+        terrainGeo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+        terrainGeo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+        terrainGeo.setIndex(indices);terrainGeo.computeVertexNormals();
+        const land=new THREE.Mesh(terrainGeo,new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide,roughness:.94,metalness:.015}));
         this.tableGroup.add(land);
         // Fill the polygon underneath the terrain triangles. An explicit terrain skirt closes
         // the open edge and prevents underside gaps in oblique camera angles.
@@ -411,6 +411,47 @@ class TacticalScene {
             }
             if (segment.length > 1)
                 this.tableGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(segment), new THREE.LineBasicMaterial({ color: 0x6be5ca, transparent: true, opacity: .14 })));
+        }
+    }
+    makeCloudLayer(){
+        // Soft alpha cloud sprites. Their opacity is computed from the campaign quarter.
+        const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+        const ctx=canvas.getContext('2d');
+        // Asymmetric overlapping cloud lobes avoid a spherical 'smoke-ball' appearance.
+        ctx.clearRect(0,0,128,128);
+        for(const [x,y,r,weight] of [[46,62,43,.58],[70,53,37,.68],[84,70,36,.56],[57,79,34,.45],[38,52,27,.4]]){
+            const g=ctx.createRadialGradient(x,y,4,x,y,r);
+            g.addColorStop(0,`rgba(255,255,255,${weight})`);
+            g.addColorStop(.5,`rgba(246,250,255,${weight*.52})`);
+            g.addColorStop(1,'rgba(230,239,246,0)');
+            ctx.fillStyle=g;ctx.fillRect(x-r,y-r,2*r,2*r);
+        }
+        this.cloudTexture=new THREE.CanvasTexture(canvas);
+        this.cloudDeck=new THREE.Group();this.tableGroup.add(this.cloudDeck);
+        this.cloudObjects=[];
+        for(let i=0;i<115;i++){
+            const lon=2.72+frac(Math.sin(i*23.143+3.5)*4195.7)*11.72;
+            const lat=4.48+frac(Math.sin(i*61.23+9.7)*987.3)*9.15;
+            if(!insidePolygon(lon,lat))continue;
+            const pattern=noise(lon*2.05,lat*2.3);
+            const material=new THREE.SpriteMaterial({map:this.cloudTexture,color:0xf8fbff,transparent:true,opacity:0,depthWrite:false,depthTest:true});
+            const sprite=new THREE.Sprite(material);
+            const h=terrainElevation(lon,lat);
+            sprite.position.copy(geoPos(lon,lat,8.3+h+frac(i*.713)*2.7));
+            sprite.scale.set(13+pattern*9,7+pattern*5,1);
+            sprite.renderOrder=8;
+            this.cloudDeck.add(sprite);
+            this.cloudObjects.push({sprite,lon,lat,pattern,home:sprite.position.clone(),phase:i*.67});
+        }
+        this.season=null;
+        this.setSeason(4);
+    }
+    setSeason(quarter){
+        const q=Number(quarter)||4;if(this.season===q)return;this.season=q;
+        for(const c of this.cloudObjects||[]){
+            c.sprite.material.opacity=cloudOpacity(c.lon,c.lat,q,c.pattern)*.66;
+            const shade=cloudCover(c.lon,c.lat,q,c.pattern);
+            c.sprite.scale.set((12+c.pattern*9)*(0.72+shade*.75),(6+c.pattern*5)*(0.72+shade*.7),1);
         }
     }
     makeAfrica() {
@@ -571,7 +612,71 @@ class TacticalScene {
         this.globeGroup.add(pt.group);
         this.globeGroup.visible = false;
     }
+    makeGroundAntenna(holder,item){
+        const metal=new THREE.MeshStandardMaterial({color:0x6c818e,metalness:.74,roughness:.3});
+        const white=new THREE.MeshStandardMaterial({color:0xdce5e4,metalness:.37,roughness:.43,side:THREE.DoubleSide});
+        const rimMat=new THREE.MeshStandardMaterial({color:0xf0f5ef,metalness:.7,roughness:.26});
+        const facility=new THREE.Group();facility.scale.setScalar(item.id==='nasrda'?1.07:.94);
+        holder.add(facility);
+        const pad=new THREE.Mesh(new THREE.BoxGeometry(4.8,.3,4.8),new THREE.MeshStandardMaterial({color:0x3e5255,metalness:.29,roughness:.71}));pad.position.y=.10;facility.add(pad);
+        const pole=new THREE.Mesh(new THREE.CylinderGeometry(.53,.7,1.75,16),metal);pole.position.y=1.02;facility.add(pole);
+        const ring=new THREE.Mesh(new THREE.TorusGeometry(.55,.105,8,24),rimMat);ring.rotation.x=Math.PI/2;ring.position.y=1.91;facility.add(ring);
+        const pivot=new THREE.Group();pivot.position.y=2.2;facility.add(pivot);
+        const azFrame=new THREE.Mesh(new THREE.BoxGeometry(.63,.72,.64),metal);pivot.add(azFrame);
+        const reflectorGeometry=new THREE.BufferGeometry(),v=[],ix=[];
+        const nr=16,nphi=48,rad=1.63;
+        for(let k=0;k<=nr;k++){
+            const r=rad*k/nr;
+            for(let j=0;j<=nphi;j++){
+                const phi=j/nphi*Math.PI*2;
+                v.push(r*Math.cos(phi),r*Math.sin(phi),.255*r*r);
+                if(k<nr&&j<nphi){const a=k*(nphi+1)+j,b=a+nphi+1;ix.push(a,b,a+1,a+1,b,b+1);}
+            }
+        }
+        reflectorGeometry.setAttribute('position',new THREE.Float32BufferAttribute(v,3));reflectorGeometry.setIndex(ix);reflectorGeometry.computeVertexNormals();
+        const dish=new THREE.Mesh(reflectorGeometry,white);pivot.add(dish);
+        const rim=new THREE.Mesh(new THREE.TorusGeometry(rad,.058,8,48),rimMat);rim.position.z=.255*rad*rad;pivot.add(rim);
+        const feedLocal=new THREE.Vector3(0,0,1.63);
+        const feedHorn=new THREE.Mesh(new THREE.CylinderGeometry(.12,.19,.29,12),metal);
+        feedHorn.rotation.x=Math.PI/2;feedHorn.position.copy(feedLocal);pivot.add(feedHorn);
+        const tip=new THREE.Mesh(new THREE.SphereGeometry(.145,12,8),rimMat);
+        tip.position.copy(feedLocal);pivot.add(tip);
+        for(const theta of [0,Math.PI*2/3,Math.PI*4/3]){
+            const from=new THREE.Vector3(Math.cos(theta)*rad*.89,Math.sin(theta)*rad*.89,.255*rad*rad*.79);
+            const d=feedLocal.clone().sub(from),beam=new THREE.Mesh(new THREE.CylinderGeometry(.035,.045,d.length(),8),metal);
+            beam.position.copy(from.clone().add(feedLocal).multiplyScalar(.5));
+            beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());pivot.add(beam);
+        }
+        if(item.id==='nasrda'||item.id==='toro'){
+            const shell=new THREE.Mesh(new THREE.SphereGeometry(2.43,32,20),new THREE.MeshStandardMaterial({color:0xe3eae9,metalness:0,roughness:.62,transparent:true,opacity:.48,depthWrite:false,side:THREE.FrontSide}));
+            shell.position.copy(pivot.position);facility.add(shell);
+            const equator=new THREE.Mesh(new THREE.TorusGeometry(2.43,.024,6,64),rimMat);equator.rotation.x=Math.PI/2;equator.position.copy(pivot.position);facility.add(equator);
+            // Geodesic seams convey a weatherproof radome, not an opaque sphere pasted over a dish.
+            for(const angle of [0,Math.PI/3,2*Math.PI/3]){
+                const seam=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(Array.from({length:96},(_,j)=>{
+                    const t=j/96*Math.PI*2;
+                    return new THREE.Vector3(2.46*Math.cos(t)*Math.cos(angle),pivot.position.y+2.46*Math.sin(t),2.46*Math.cos(t)*Math.sin(angle));
+                })),new THREE.LineBasicMaterial({color:0x899da1,transparent:true,opacity:.25,depthWrite:false}));
+                facility.add(seam);
+            }
+        }
+        return {facility,pivot,feedLocal,tip,groundId:item.id,targetId:'geo'};
+    }
+    aimGroundDish(model,target,dt=1){
+        if(!model||!target)return;
+        // Feed-horn is the physical endpoint. Aim the dish bore-sight toward the spacecraft.
+        const origin=new THREE.Vector3();model.pivot.getWorldPosition(origin);
+        const aim=target.clone().sub(origin).normalize();
+        const desired=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1),aim);
+        model.pivot.quaternion.slerp(desired,Math.min(1,dt*2.7));
+        model.targetId=target.userData?.assetId||model.targetId;
+    }
+    stationFeedWorld(model){
+        model.pivot.updateWorldMatrix(true,false);
+        return model.pivot.localToWorld(model.feedLocal.clone());
+    }
     makeMarkers() {
+        this.stationModels=new Map();
         this.layerGroups = { theatres: new THREE.Group(), targets: new THREE.Group(), stations: new THREE.Group() };
         Object.values(this.layerGroups).forEach(g => this.tableGroup.add(g));
         for (const item of [...THEATRES, ...GROUND, ...TARGETS]) {
@@ -584,22 +689,10 @@ class TacticalScene {
             const glow = glowBall(item.tone, item.type === 'theatre' ? 1.22 : .85);
             holder.add(glow.group);
             if(item.type==='station'){
-                const mast=new THREE.Group();
-                mast.position.set(0,.65,0);
-                const metal=new THREE.MeshStandardMaterial({color:0x8fabb3,metalness:.78,roughness:.37});
-                const white=new THREE.MeshStandardMaterial({color:0xd9e5dc,metalness:.18,roughness:.61,transparent:true,opacity:.84});
-                const pedestal=new THREE.Mesh(new THREE.CylinderGeometry(.43,.62,1.3,12),metal);
-                pedestal.position.y=.48;mast.add(pedestal);
-                const housing=new THREE.Mesh(new THREE.SphereGeometry(1.65,24,16,0,Math.PI*2,0,Math.PI/2),white);
-                housing.position.y=1.65;mast.add(housing);
-                const dishPivot=new THREE.Group();dishPivot.position.y=2.03;dishPivot.rotation.z=-.32;
-                const dish=new THREE.Mesh(new THREE.SphereGeometry(1.45,24,12,0,Math.PI*2,0,Math.PI*.32),new THREE.MeshStandardMaterial({color:0xbfcbd1,metalness:.6,roughness:.34,side:THREE.DoubleSide}));
-                dishPivot.add(dish);
-                const feed=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,1.2,8),metal);feed.position.y=1.08;dishPivot.add(feed);
-                const feedHead=new THREE.Mesh(new THREE.SphereGeometry(.17,10,8),metal);feedHead.position.y=1.65;dishPivot.add(feedHead);
-                mast.add(dishPivot);
-                mast.scale.setScalar(item.id==='nasrda'?1.45:1.05);
-                holder.add(mast);
+                // A true concave parabolic reflector with feedhorn, struts and az-el mount.
+                // Selected facilities have protective translucent spherical radomes.
+                const model=this.makeGroundAntenna(holder,item);
+                this.stationModels.set(item.id,model);
             }
             glow.hit.userData.assetId = item.id;
             this.pickables.push(glow.hit);
@@ -697,7 +790,8 @@ class TacticalScene {
         this.reticles = [];
         const geoAsset = SATS[0], geoState = orbitState(geoAsset, 0);
         const geoDirection = orbitToTabletop(geoState.ecef).sub(new THREE.Vector3(0, 2, 0)).normalize();
-        const geoPosition = geoDirection.multiplyScalar(154).add(new THREE.Vector3(0, 2, 0));        const geo = satelliteMesh(geoAsset.tone, .72);
+        const geoPosition = geoDirection.multiplyScalar(154).add(new THREE.Vector3(0, 2, 0));
+        const geo = satelliteMesh(geoAsset.tone, .72);
         geo.position.copy(geoPosition);
         geo.userData.assetId = geoAsset.id;
         geo.rotation.set(.2, -.6, .02);
@@ -731,13 +825,19 @@ class TacticalScene {
         footprintOuter.position.y = 10.7;
         footprintOuter.renderOrder = 25;
         this.beamGroup.add(footprintOuter);
-        this.geoLinks = [];
-        GROUND.filter(g => ['abuja', 'nasrda', 'toro', 'epe'].includes(g.id)).forEach((g, i) => {
-            const p = geoPos(g.lon, g.lat, 9.0 + terrainElevation(g.lon, g.lat));
-            const link = new THREE.Line(new THREE.BufferGeometry().setFromPoints([source, p]), new THREE.LineDashedMaterial({ color: i % 2 === 0 ? 0xffc679 : 0xbba2ff, dashSize: 2.2, gapSize: 1.35, transparent: true, opacity: .6, depthWrite: false }));
-            link.computeLineDistances();
-            this.beamGroup.add(link);
-            this.geoLinks.push(link);
+        this.geoLinks=[];
+        const pulseGeometry=new THREE.SphereGeometry(.36,9,7);
+        GROUND.forEach((station,i)=>{
+            const model=this.stationModels.get(station.id);
+            const geom=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),source]);
+            const line=new THREE.Line(geom,new THREE.LineBasicMaterial({color:i%2===0?0xeebd77:0x91cce2,transparent:true,opacity:.46,depthTest:false,depthWrite:false}));
+            line.renderOrder=36;this.beamGroup.add(line);
+            const pulses=[];
+            for(let p=0;p<3;p++){
+                const glow=new THREE.Mesh(pulseGeometry,new THREE.MeshBasicMaterial({color:i%2===0?0xffdf9d:0xc4f5ff,transparent:true,opacity:.92,depthTest:false,depthWrite:false}));
+                glow.renderOrder=37;this.beamGroup.add(glow);pulses.push(glow);
+            }
+            this.geoLinks.push({model,station,line,pulses,source,level:i<2?1:i===2?3:2});
         });
         this.contactLinks=[];
         SATS.slice(1).forEach((a,k)=>{
@@ -849,6 +949,7 @@ class TacticalScene {
                 pp.needsUpdate = true;
             }
         });
+        const trackingStations=new Set();
         for(const link of this.contactLinks){
             const a=link.asset;
             const state=orbitState(a,t);
@@ -856,9 +957,14 @@ class TacticalScene {
             const eligible=link.station.level<=this.groundLevel && !!this.commissioned[a.id]
                 && this.layers.beams && this.layers.satellites && nearTableSky(position)
                 && elevationDeg(state.ecef,link.station.lat,link.station.lon)>=12;
-            link.line.visible=eligible;
-            if(eligible){
-                const pt=geoPos(link.station.lon,link.station.lat,10.4+terrainElevation(link.station.lon,link.station.lat));
+            const dishId=link.station.id==='abuja'?'nasrda':link.station.id==='coastal'?'epe':'toro';
+            const model=this.stationModels.get(dishId);
+            const active=eligible&&!trackingStations.has(dishId);
+            link.line.visible=active;
+            if(active){
+                trackingStations.add(dishId);
+                this.aimGroundDish(model,position,dt);
+                const pt=model?this.stationFeedWorld(model):geoPos(link.station.lon,link.station.lat,9+terrainElevation(link.station.lon,link.station.lat));
                 const attr=link.line.geometry.attributes.position;
                 attr.setXYZ(0,position.x,position.y,position.z);
                 attr.setXYZ(1,pt.x,pt.y,pt.z);
@@ -870,10 +976,35 @@ class TacticalScene {
             }
             link.wasVisible=eligible;
         }
+        // GEO stays Earth-fixed. The dish tracks a stable bearing; travelling photons are
+        // represented by packets between the true feed-horn tip and satellite mesh centre.
+        for(const link of this.geoLinks){
+            const model=link.model,leased=this.groundLevel>=link.level;
+            const tracking=trackingStations.has(link.station.id);
+            link.line.visible=leased&&!tracking;
+            link.pulses.forEach(p=>p.visible=link.line.visible);
+            if(!link.line.visible)continue;
+            this.aimGroundDish(model,link.source,dt);
+            const feed=this.stationFeedWorld(model);
+            const pos=link.line.geometry.attributes.position;
+            pos.setXYZ(0,feed.x,feed.y,feed.z);
+            pos.setXYZ(1,link.source.x,link.source.y,link.source.z);
+            pos.needsUpdate=true;
+            link.pulses.forEach((pulse,k)=>{
+                const frac=((this.clock*.24+k/3)%1+1)%1;
+                pulse.position.copy(feed).lerp(link.source,frac);
+                pulse.scale.setScalar(.65+.55*Math.sin(Math.PI*frac));
+                pulse.material.opacity=.25+.69*Math.sin(Math.PI*frac);
+            });
+        }
+        if(!this.geoContactAnnounced&&this.onPass&&this.geoLinks.some(l=>l.line.visible)){
+            this.geoContactAnnounced=true;
+            this.onPass({kind:'contact',asset:'NigComSat-1R',station:'Ground network'});
+        }
         this.orbitSats.forEach(({ obj, marker, a }) => {
             const state = orbitState(a, t), p = orbitToGlobe(state.ecef, a);
             obj.position.copy(p);
-            obj.rotation.y = -t * .0008;
+            obj.rotation.y = a.class==='GEO' ? -.08 : -t*.0008;
             marker.position.copy(p).add(new THREE.Vector3(0, 4, 0));
             const active = !!this.commissioned[a.id];
             obj.visible = this.layers.satellites;
@@ -912,9 +1043,10 @@ class TacticalScene {
             });
         }
     }
-    configure({ mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask }) {
+    configure({ mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask, quarter }) {
         if (Number.isFinite(epochSeconds) && this.epochSeconds !== epochSeconds) { this.epochSeconds=epochSeconds; this.orbitalSeconds=epochSeconds; }
         this.layers = layers;
+        this.setSeason(quarter);
         this.labels = labels;
         this.speed = speed;
         this.orbitalPlay = orbitalPlay !== false;
@@ -1058,7 +1190,7 @@ class TacticalScene {
         }
     } }); this.renderer.dispose(); this.renderer.domElement.remove(); }
 }
-function Scene3D({ engineRef, onPick, onPass, mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask }) { const el = useRef(null); const [graphicsError,setGraphicsError]=useState(null); const picker = useRef(onPick); const passListener=useRef(onPass); picker.current = onPick;passListener.current=onPass; useEffect(() => {
+function Scene3D({ engineRef, onPick, onPass, mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask, quarter }) { const el = useRef(null); const [graphicsError,setGraphicsError]=useState(null); const picker = useRef(onPick); const passListener=useRef(onPass); picker.current = onPick;passListener.current=onPass; useEffect(() => {
     if (!el.current) return;
     let engine;
     try { engine = new TacticalScene(el.current, id => picker.current(id)); }
@@ -1076,9 +1208,9 @@ function Scene3D({ engineRef, onPick, onPass, mode, layers, labels, speed, commi
     canvas.addEventListener('webglcontextrestored',onContextRestored);
     return () => {canvas.removeEventListener('webglcontextlost',onContextLost);canvas.removeEventListener('webglcontextrestored',onContextRestored);engineRef.current = null; engine.dispose();};
 }, []); useEffect(() => {
-    try{engineRef.current?.configure({ mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask });}
+    try{engineRef.current?.configure({ mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask, quarter });}
     catch(error){console.error('3D configuration failed',error);setGraphicsError(error?.message||'3D configuration failed');}
-}, [mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask]);
+}, [mode, layers, labels, speed, commissioned, groundLevel, launchFunded, orbitalPlay, epochSeconds, replayTask, quarter]);
 return React.createElement('div',{className:'scene-canvas-host'},
     React.createElement('div',{ref:el,className:'scene-canvas','aria-label':'Interactive Nigeria 3D tactical map'}),
     graphicsError && React.createElement('section',{className:'graphics-error',role:'alert'},
@@ -1396,7 +1528,8 @@ function App() {
                         React.createElement("div", { className: "res-value" },
                             support,
                             React.createElement("small", null, "%")))),
-                React.createElement("div", { className: "resource" },                    React.createElement("span", { className: "res-icon teal" },
+                React.createElement("div", { className: "resource" },
+                    React.createElement("span", { className: "res-icon teal" },
                         React.createElement(Icon, { name: "shield-check", size: 21 })),
                     React.createElement("div", null,
                         React.createElement("div", { className: "res-label" }, "SOVEREIGN INTEGRITY"),
@@ -1431,7 +1564,7 @@ function App() {
                         React.createElement(Icon, { name: "skip-forward", size: 17 }),
                         React.createElement("span", null, "TURN"))))),
         React.createElement("main", { className: "game-stage" },
-            React.createElement(Scene3D, { engineRef: engineRef, onPick: choose, onPass: passMessage, mode: mode, layers: layers, labels: labels, speed: entered ? speed : 0, commissioned: commissioned, groundLevel:campaign.groundLevel, launchFunded: launchFunded, orbitalPlay: orbitalPlay, epochSeconds: campaign.missionEpochSeconds, replayTask }),
+            React.createElement(Scene3D, { engineRef: engineRef, onPick: choose, onPass: passMessage, mode: mode, layers: layers, labels: labels, speed: entered ? speed : 0, commissioned: commissioned, groundLevel:campaign.groundLevel, quarter:campaignQuarter(campaign.turn), launchFunded: launchFunded, orbitalPlay: orbitalPlay, epochSeconds: campaign.missionEpochSeconds, replayTask }),
             React.createElement("div", { className: "scene-vignette" }),
             entered && React.createElement('nav',{className:'desktop-command-rail','aria-label':'Main command navigation'},
               [['overview','layout-dashboard','Command overview',()=>{setBriefingOpen(v=>!v);setMissionOpen(false)}],
@@ -1446,7 +1579,10 @@ function App() {
             entered && React.createElement('div',{className:'view-heading'},
                React.createElement('span',{className:'eyebrow'},mode==='Orbit View'?'ORBITAL NETWORK':mode==='Africa View'?'REGIONAL OVERVIEW':'NATIONAL THEATRE'),
                React.createElement('strong',null,mode==='Orbit View'?'Earth & Orbit':mode==='Africa View'?'Africa':'Nigeria'),
-               React.createElement('span',{className:'view-heading-detail'}, mode==='Orbit View'?'Satellite trajectories and stations':mode==='Africa View'?'Continental context · Nigeria highlighted':'Strategic Command · War Room')),
+               React.createElement('span',{className:'view-heading-detail'}, mode==='Orbit View'?'Satellite trajectories and stations':mode==='Africa View'?'Continental context · Nigeria highlighted':'Strategic Command · War Room'),
+               mode==='War Room 3D' && React.createElement('span',{className:'season-indicator'},
+                 React.createElement(Icon,{name:'cloud-sun',size:13}),
+                 `Q${campaignQuarter(campaign.turn)} · ${QUARTER_NAMES[campaignQuarter(campaign.turn)-1]}`)),
             entered && React.createElement('div',{className:'pass-forecast','aria-label':'Next satellite pass'},
                 React.createElement(Icon,{name:'satellite',size:14}),
                 React.createElement('div',null,React.createElement('span',null,'NEXT OBSERVATION PASS'),

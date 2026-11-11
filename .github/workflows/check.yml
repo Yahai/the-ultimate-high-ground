@@ -18,6 +18,9 @@ jobs:
           node --check assets/orbital.mjs
           node --check assets/replay.mjs
           node --check assets/africa-geography.mjs
+          node --check assets/ecoregions.mjs
+      - name: Verify ecotones, quarterly atmosphere, GEO stationarity and links
+        run: node tests/ecoregions.test.mjs
       - name: Verify Visual Rescue country map and map geometry
         run: node tests/visual_rescue.test.mjs
       - name: Check game assets and orbital mechanics
@@ -44,10 +47,7 @@ jobs:
       - name: Install mobile layout browser
         run: |
           python -m pip install playwright==1.56.0 pillow
-          # Ubuntu GitHub runners include Google Chrome. Avoid slow apt dependency installs.
-          if ! command -v google-chrome >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then
-            python -m playwright install chromium
-          fi
+          python -m playwright install --with-deps chromium
       - name: Verify phone landscape and portrait layouts
         run: python tests/mobile_layout.py
       - name: Play complete introductory mission in real Chromium

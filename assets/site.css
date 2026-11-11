@@ -335,3 +335,7 @@ body{background:#070d13;color:var(--ui-text);-webkit-font-smoothing:antialiased}
 .pass-forecast svg{color:#73d8b4}.pass-forecast span{display:block;font-size:9px;font-weight:800;letter-spacing:1.2px;color:#8daeb2}.pass-forecast strong{display:block;font-size:12px;margin-top:4px;color:#e8f7f2;font-weight:650}
 @media(max-width:900px){.pass-forecast{left:14px;bottom:calc(66px + env(safe-area-inset-bottom));padding:8px 11px}.pass-forecast strong{font-size:10px}}
 @media(pointer:coarse) and (orientation:landscape) and (max-height:650px){.pass-forecast{left:8px;bottom:calc(60px + env(safe-area-inset-bottom));max-width:45%;padding:6px 9px}.pass-forecast strong{font-size:9px}.pass-forecast span{font-size:8px}}
+
+/* Seasonal atmosphere indicator stays subordinate to the current objective. */
+.season-indicator{display:flex;align-items:center;gap:6px;width:max-content;padding:5px 8px;margin-top:7px;border:1px solid rgba(180,209,184,.18);border-radius:5px;background:rgba(21,42,38,.65);color:#b9c9bc;font-size:10px;font-weight:650;letter-spacing:.02em}
+@media(orientation:landscape) and (max-height:560px) and (pointer:coarse){.season-indicator{display:none}}

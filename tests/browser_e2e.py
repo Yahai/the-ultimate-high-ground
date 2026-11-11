@@ -20,7 +20,7 @@ thread.start()
 url=f'http://127.0.0.1:{server.server_address[1]}/'
 try:
     with sync_playwright() as p:
-        browser=p.chromium.launch(headless=True,executable_path=shutil.which('google-chrome') or shutil.which('chromium') or None,args=[
+        browser=p.chromium.launch(headless=True,args=[
             '--no-sandbox','--disable-dev-shm-usage','--enable-webgl',
             '--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         page=browser.new_page(viewport={'width':1450,'height':920},device_scale_factor=1)
@@ -30,6 +30,7 @@ try:
         expect(page.locator('.splash')).to_be_visible(timeout=40000)
         expect(page.get_by_text('DOMINATE THE FINAL FRONTIER').first).to_be_visible()
         page.locator('.enter-btn').click()
+        expect(page.locator('.season-indicator')).to_contain_text('Retreating rains',timeout=25000)
         # A real drawn 3D canvas (rather than just booted React controls).
         canvas=page.locator('.scene-canvas canvas')
         expect(canvas).to_be_visible(timeout=30000)
