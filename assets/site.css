@@ -226,3 +226,11 @@
 @media (orientation:landscape) and (max-height:520px) and (pointer:coarse){
   .portfolio-jump{min-height:44px}.portfolio-action button{min-height:44px}.portfolio-project{padding:10px}
 }
+/* Renderer compatibility feedback: always visible above stage overlays. */
+.scene-canvas-host{position:absolute;inset:0;z-index:0}
+.scene-canvas-host>.scene-canvas{position:absolute;inset:0}
+.graphics-error{position:absolute;z-index:45;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100% - 28px));max-height:calc(100% - 26px);overflow:auto;padding:24px;color:#e8fcff;background:rgba(4,18,30,.97);border:1px solid #5ab8c5;border-radius:12px;box-shadow:0 15px 80px #000c;font:13px/1.6 system-ui,sans-serif}
+.graphics-error h2{color:#75f3d1;font-size:17px;margin:0 0 12px;letter-spacing:.9px}
+.graphics-error p{margin:8px 0}
+.graphics-error-detail{font-family:ui-monospace,monospace;color:#ffbf93;overflow-wrap:anywhere}
+.graphics-error button{background:#11755d;color:white;border:1px solid #55e1b5;padding:11px 17px;border-radius:8px;min-height:44px;font-weight:800;margin-top:11px}

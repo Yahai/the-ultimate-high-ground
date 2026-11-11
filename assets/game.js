@@ -215,7 +215,16 @@ class TacticalScene {
         this.scene.fog = new THREE.FogExp2('#020b14', .00155);
         this.camera = new THREE.PerspectiveCamera(46, w / h, .1, 2500);
         this.camera.position.set(127, 117, 156);
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+        try {
+            this.renderer = new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
+        } catch(primaryError) {
+            console.warn('Retrying 3D renderer with compatibility settings:',primaryError);
+            try {
+                this.renderer = new THREE.WebGLRenderer({antialias:false,alpha:false,powerPreference:'default',precision:'mediump'});
+            } catch(fallbackError) {
+                throw new Error('WebGL renderer unavailable. '+(fallbackError?.message||primaryError?.message||'Please check browser graphics acceleration.'));
+            }
+        }
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.matchMedia('(pointer: coarse)').matches ? 1.15 : 1.35));
         this.renderer.setSize(w, h);
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -918,18 +927,36 @@ class TacticalScene {
         }
     } }); this.renderer.dispose(); this.renderer.domElement.remove(); }
 }
-function Scene3D({ engineRef, onPick, mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask }) { const el = useRef(null); const picker = useRef(onPick); picker.current = onPick; useEffect(() => {
+function Scene3D({ engineRef, onPick, mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask }) { const el = useRef(null); const picker = useRef(onPick); const [graphicsError,setGraphicsError] = useState(null); picker.current = onPick; useEffect(() => {
     if (!el.current) return;
     let engine;
     try { engine = new TacticalScene(el.current, id => picker.current(id)); }
     catch (error) {
         console.error('Unable to initialize WebGL tactical scene:', error);
-        el.current.innerHTML = '<div style="padding:32px;margin:24px;color:#def7ff;background:rgba(7,24,39,.9);border:1px solid #398c9c;border-radius:10px"><h2>3D graphics unavailable</h2><p>Enable hardware acceleration or use a modern browser with WebGL2 support. The strategic campaign controls may remain available.</p></div>';
+        el.current?.replaceChildren();
+        setGraphicsError(error?.message || 'The 3D renderer could not start.');
         return;
     }
     engineRef.current = engine;
-    return () => { engineRef.current = null; engine.dispose(); };
-}, []); useEffect(() => { engineRef.current?.configure({ mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask }); }, [mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask]); return React.createElement("div", { ref: el, className: "scene-canvas", "aria-label": "Interactive simulated Nigeria tactical map" }); }
+    const canvas=engine.renderer.domElement;
+    const onContextLost=(event)=>{event.preventDefault();setGraphicsError('The browser lost the WebGL graphics context. Reload the game; if it repeats, enable browser graphics acceleration and update your graphics driver.');};
+    const onContextRestored=()=>{setGraphicsError(null);};
+    canvas.addEventListener('webglcontextlost',onContextLost,false);
+    canvas.addEventListener('webglcontextrestored',onContextRestored,false);
+    return () => {canvas.removeEventListener('webglcontextlost',onContextLost);canvas.removeEventListener('webglcontextrestored',onContextRestored);engineRef.current = null; engine.dispose();};
+}, []); useEffect(() => {
+    try {engineRef.current?.configure({ mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask });}
+    catch(error){console.error('3D configuration failed',error);setGraphicsError(error?.message||'3D configuration failed.');}
+}, [mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask]);
+return React.createElement('div',{className:'scene-canvas-host'},
+    React.createElement('div',{ref:el,className:'scene-canvas','aria-label':'Interactive Nigeria 3D tactical map'}),
+    graphicsError && React.createElement('section',{className:'graphics-error',role:'alert'},
+       React.createElement('h2',null,'3D VIEW UNAVAILABLE'),
+       React.createElement('p',null,'Your browser could not display the scene. This is a graphics compatibility issue, not a campaign failure.'),
+       React.createElement('p',{className:'graphics-error-detail'},graphicsError),
+       React.createElement('p',null,'In Chrome or Edge, open Settings → System → enable graphics acceleration, restart the browser, and reload the game. If the problem continues, update your graphics driver.'),
+       React.createElement('button',{onClick:()=>window.location.reload()},'RETRY 3D VIEW'))
+); }
 function Meter({ value, color }) { return React.createElement("div", { className: "meter-track" },
     React.createElement("div", { style: { width: clamp(value, 0, 100) + '%', background: color || '#54e3cb' } })); }
 const SAVE_KEY = 'tuhg-campaign-v5';
