@@ -5,7 +5,8 @@ No external military data is queried, only public CDN scripts used by the game.
 from pathlib import Path
 from threading import Thread
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
-import os, shutil
+import os, shutil, io
+from PIL import Image, ImageStat
 from playwright.sync_api import sync_playwright, expect
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -29,6 +30,33 @@ try:
         expect(page.locator('.splash')).to_be_visible(timeout=40000)
         expect(page.get_by_text('DOMINATE THE FINAL FRONTIER').first).to_be_visible()
         page.locator('.enter-btn').click()
+        canvas=page.locator('.scene-canvas canvas')
+        expect(canvas).to_be_visible(timeout=30000)
+        page.wait_for_timeout(1800)
+        report=page.evaluate("""() => {
+          const host=document.querySelector('.scene-canvas');
+          const c=host?.querySelector('canvas');
+          const cs=c ? getComputedStyle(c) : null;
+          const rect=c?.getBoundingClientRect();
+          let glInfo='none', glError='';
+          try { const gl=c?.getContext('webgl2')||c?.getContext('webgl');glInfo=gl ? String(gl.getParameter(gl.VERSION)) : 'no-context'; }
+          catch(e) {glError=String(e)}
+          return {host: host ? [host.clientWidth,host.clientHeight]:null, size:c ? [c.width,c.height]:null, rect: rect ? [rect.x,rect.y,rect.width,rect.height]:null, visibility:cs?.visibility, opacity:cs?.opacity, glInfo,glError};
+        }""")
+        print('3D DIAGNOSTIC',report,flush=True)
+        assert report['host'][0]>450 and report['host'][1]>300, '3D stage has no viewport'
+        assert report['size'][0]>0 and report['size'][1]>0, 'Renderer has zero-size drawing buffer'
+        image=Image.open(io.BytesIO(canvas.screenshot())).convert('RGB')
+        stat=ImageStat.Stat(image)
+        print('3D PIXELS TABLETOP',{'mean':stat.mean,'stddev':stat.stddev,'center':image.getpixel((image.width//2,image.height//2))},flush=True)
+        assert max(stat.stddev)>8,'Tabletop canvas does not have sufficient visible content'
+        page.get_by_role('button',name='Orbit View').first.click()
+        page.wait_for_timeout(1900)
+        image=Image.open(io.BytesIO(canvas.screenshot())).convert('RGB')
+        stat=ImageStat.Stat(image)
+        print('3D PIXELS ORBIT',{'mean':stat.mean,'stddev':stat.stddev,'center':image.getpixel((image.width//2,image.height//2))},flush=True)
+        assert max(stat.stddev)>8,'Orbit canvas does not have sufficient visible content'
+        page.get_by_role('button',name='War Room 3D').first.click()
         guide=page.locator('.firstlight-guide')
         expect(guide).to_be_visible(timeout=25000)
         expect(guide.get_by_text('Protect the Delta')).to_be_visible()
