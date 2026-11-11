@@ -12,7 +12,11 @@ jobs:
         with:
           node-version: '22'
       - name: Validate JavaScript syntax
-        run: node --check assets/game.js
+        run: |
+          node --check assets/game.js
+          node --check assets/strategy.mjs
+          node --check assets/orbital.mjs
+          node --check assets/replay.mjs
       - name: Check game assets and orbital mechanics
         run: node tests/smoke.cjs
       - name: Exercise strategy model
@@ -21,3 +25,18 @@ jobs:
         run: node tests/orbital.test.mjs
       - name: Verify tasking, downlinks, and intelligence products
         run: node tests/mission.test.mjs
+      - name: Verify replay timing and scene geometry
+        run: node tests/replay.test.mjs
+  mobile-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install mobile layout browser
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Verify phone landscape and portrait layouts
+        run: python tests/mobile_layout.py

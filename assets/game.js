@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createCampaign, MAX_TURNS, PROGRAMMES, EVENTS, campaignDateLabel, computeMetrics, programmeRemaining, applyDirective, advanceCampaign, resolveEvent, queueMission, analyseProduct } from './strategy.mjs';
-import { propagateOrbit, orbitPeriodSeconds as physicsPeriod, planMission, MISSION_ASSETS, MISSION_REGIONS, formatHours } from './orbital.mjs';
+import { propagateOrbit, orbitPeriodSeconds as physicsPeriod, planMission, MISSION_ASSETS, MISSION_REGIONS, RECEIVERS, formatHours } from './orbital.mjs';
+import { missionReplayFrame, REPLAY_DURATION_S, groundNetworkSnapshot } from './replay.mjs';
 const React = window.React;
 const ReactDOM = window.ReactDOM;
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
@@ -215,7 +216,7 @@ class TacticalScene {
         this.camera = new THREE.PerspectiveCamera(46, w / h, .1, 2500);
         this.camera.position.set(127, 117, 156);
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.35));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.matchMedia('(pointer: coarse)').matches ? 1.15 : 1.35));
         this.renderer.setSize(w, h);
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -225,6 +226,8 @@ class TacticalScene {
         this.controls.target.set(0, 1, 0);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = .085;
+        this.renderer.domElement.style.touchAction = 'none';
+        this.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
         this.controls.minDistance = 17;
         this.controls.maxDistance = 420;
         this.controls.maxPolarAngle = Math.PI * .49;
@@ -241,6 +244,7 @@ class TacticalScene {
         this.makeTerrainDetails();
         this.makeGlobe();
         this.makeMarkers();
+        this.makeMissionOverlay();
         this.makeLaunchGantry();
         this.makeSatellites();
         this.setMode('War Room 3D', true);
@@ -264,7 +268,7 @@ class TacticalScene {
         let last = performance.now();
         this.animate = (now) => { if (this.disposed)
             return; const delta = Math.min((now - last) / 1000, .05); last = now; this.clock += delta; if (this.orbitalPlay)
-            this.orbitalSeconds += delta * ORBIT_VISUAL_RATE; this.update(delta); this.controls.update(); this.renderer.render(this.scene, this.camera); this.raf = requestAnimationFrame(this.animate); };
+            this.orbitalSeconds += delta * ORBIT_VISUAL_RATE; if (this.replayTask) { const frame=missionReplayFrame(this.replayTask,(now-this.replayStartMs)/1000); if(frame)this.orbitalSeconds=frame.epochSeconds; } this.update(delta); this.controls.update(); this.renderer.render(this.scene, this.camera); this.raf = requestAnimationFrame(this.animate); };
         this.raf = requestAnimationFrame(this.animate);
     }
     makeBackground() {
@@ -528,6 +532,62 @@ class TacticalScene {
             this.markers.push({ item, holder, ring, rich, simple });
         }
     }
+    makeMissionOverlay() {
+        // Single reusable visual: no allocations in the animation loop.
+        this.missionGraphics = new THREE.Group();
+        this.tableGroup.add(this.missionGraphics);
+        const ring = (color, radius) => {
+            const mesh = new THREE.Mesh(new THREE.RingGeometry(radius, radius+.25, 64),
+                new THREE.MeshBasicMaterial({color, transparent:true,opacity:.85,depthTest:false,depthWrite:false,side:THREE.DoubleSide}));
+            mesh.rotation.x=-Math.PI/2; mesh.renderOrder=48;
+            this.missionGraphics.add(mesh); return mesh;
+        };
+        this.missionTargetRing=ring(0x72fbd3,4.0);
+        this.missionReceiverRing=ring(0xffc971,3.1);
+        const geometry=new THREE.BufferGeometry();
+        geometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+        this.missionBeam=new THREE.Line(geometry,new THREE.LineBasicMaterial({color:0x65ecdb,transparent:true,opacity:.92,depthTest:false,depthWrite:false}));
+        this.missionBeam.renderOrder=49;
+        this.missionGraphics.add(this.missionBeam);
+        this.missionGraphics.visible=false;
+    }
+    setMissionReplay(task) {
+        const key=task?.replayToken||null;
+        if(key===this.replayToken)return;
+        this.replayToken=key;
+        this.replayTask=task||null;
+        this.replayStartMs=performance.now();
+    }
+    drawMissionReplay() {
+        const frame=this.replayTask?missionReplayFrame(this.replayTask,(performance.now()-this.replayStartMs)/1000):null;
+        this.currentReplayFrame=frame;
+        if(!frame){this.missionGraphics.visible=false;return;}
+        this.missionGraphics.visible=true;
+        const region=MISSION_REGIONS[frame.regionId];
+        const receiver=RECEIVERS.find(s=>s.id===frame.receiverId);
+        const target=geoPos(region.lon,region.lat,7.4);
+        this.missionTargetRing.position.copy(target);
+        this.missionTargetRing.visible=frame.phase==='acquisition';
+        this.missionReceiverRing.visible=frame.phase==='downlink'&&!!receiver;
+        if(receiver)this.missionReceiverRing.position.copy(geoPos(receiver.lon,receiver.lat,7.4));
+        const spacecraft=SATS.find(a=>a.id===frame.assetId);
+        if(!spacecraft||!frame.location||!frame.linkValid||frame.phase==='complete'){
+            this.missionBeam.visible=false;return;
+        }
+        const pos=orbitToTabletop(orbitState(spacecraft,frame.epochSeconds).ecef);
+        this.missionBeam.visible=nearTableSky(pos);
+        if(this.missionBeam.visible){
+            const goal=geoPos(frame.location.lon,frame.location.lat,7.4);
+            const attrs=this.missionBeam.geometry.attributes.position;
+            attrs.setXYZ(0,pos.x,pos.y,pos.z);
+            attrs.setXYZ(1,goal.x,goal.y,goal.z);
+            attrs.needsUpdate=true;
+            this.missionBeam.material.color.set(frame.phase==='acquisition'?0x65ecdb:0xffc971);
+        }
+        const pulse=1+Math.sin(this.clock*4)*.08;
+        this.missionTargetRing.scale.setScalar(pulse);
+        this.missionReceiverRing.scale.setScalar(pulse);
+    }
     makeSatellites() {
         this.satGroup = new THREE.Group();
         this.tableGroup.add(this.satGroup);
@@ -537,8 +597,7 @@ class TacticalScene {
         this.tableGroup.add(this.orbitTrackGroup);
         this.satObjects = [];
         this.beams = [];
-        this.reticles = [];
-        const geoAsset = SATS[0], geoState = orbitState(geoAsset, 0);
+        this.reticles = [];        const geoAsset = SATS[0], geoState = orbitState(geoAsset, 0);
         const geoDirection = orbitToTabletop(geoState.ecef).sub(new THREE.Vector3(0, 2, 0)).normalize();
         const geoPosition = geoDirection.multiplyScalar(154).add(new THREE.Vector3(0, 2, 0));
         const geo = satelliteMesh(geoAsset.tone, .72);
@@ -597,7 +656,8 @@ class TacticalScene {
             const count = 190;
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 6), 3));
-            geometry.setDrawRange(0, 0);            const track = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: a.tone, transparent: true, opacity: .57, depthWrite: false }));
+            geometry.setDrawRange(0, 0);
+            const track = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: a.tone, transparent: true, opacity: .57, depthWrite: false }));
             this.orbitTrackGroup.add(track);
             const cone = new THREE.Mesh(new THREE.ConeGeometry(9, 1, 28, 1, true), new THREE.MeshBasicMaterial({ color: a.tone, transparent: true, opacity: .115, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
             this.beamGroup.add(cone);
@@ -642,6 +702,7 @@ class TacticalScene {
             if (t >= 1)
                 this.transition = null;
         }
+        this.drawMissionReplay();
         this.markers.forEach(({ ring }, i) => { const s = 1 + Math.sin(this.clock * 1.8 + i) * .06; ring.scale.setScalar(s); ring.material.opacity = .6 + .22 * Math.sin(this.clock * 1.6 + i); });
         const t = this.orbitalSeconds;
         SATS.slice(1).forEach((a, k) => {
@@ -718,13 +779,14 @@ class TacticalScene {
             });
         }
     }
-    configure({ mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds }) {
+    configure({ mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask }) {
         if (Number.isFinite(epochSeconds) && this.epochSeconds !== epochSeconds) { this.epochSeconds=epochSeconds; this.orbitalSeconds=epochSeconds; }
         this.layers = layers;
         this.labels = labels;
         this.speed = speed;
         this.orbitalPlay = orbitalPlay !== false;
         this.commissioned = commissioned || { geo: true };
+        this.setMissionReplay(replayTask);
         if (this.gantry)
             this.gantry.visible = !!launchFunded;
         if (mode !== this.mode)
@@ -856,7 +918,7 @@ class TacticalScene {
         }
     } }); this.renderer.dispose(); this.renderer.domElement.remove(); }
 }
-function Scene3D({ engineRef, onPick, mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds }) { const el = useRef(null); const picker = useRef(onPick); picker.current = onPick; useEffect(() => {
+function Scene3D({ engineRef, onPick, mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask }) { const el = useRef(null); const picker = useRef(onPick); picker.current = onPick; useEffect(() => {
     if (!el.current) return;
     let engine;
     try { engine = new TacticalScene(el.current, id => picker.current(id)); }
@@ -867,12 +929,31 @@ function Scene3D({ engineRef, onPick, mode, layers, labels, speed, commissioned,
     }
     engineRef.current = engine;
     return () => { engineRef.current = null; engine.dispose(); };
-}, []); useEffect(() => { engineRef.current?.configure({ mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds }); }, [mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds]); return React.createElement("div", { ref: el, className: "scene-canvas", "aria-label": "Interactive simulated Nigeria tactical map" }); }
+}, []); useEffect(() => { engineRef.current?.configure({ mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask }); }, [mode, layers, labels, speed, commissioned, launchFunded, orbitalPlay, epochSeconds, replayTask]); return React.createElement("div", { ref: el, className: "scene-canvas", "aria-label": "Interactive simulated Nigeria tactical map" }); }
 function Meter({ value, color }) { return React.createElement("div", { className: "meter-track" },
     React.createElement("div", { style: { width: clamp(value, 0, 100) + '%', background: color || '#54e3cb' } })); }
 const SAVE_KEY = 'tuhg-campaign-v3';
 const PREVIOUS_SAVE_KEY = 'tuhg-campaign-v2';
 const OLD_SAVE_KEY = 'tuhg-campaign-v1';
+function isTouchGameDevice() {
+    return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches && Math.min(window.innerWidth, window.innerHeight) <= 820;
+}
+function requestLandscapeFullscreen() {
+    const root = document.documentElement;
+    if (!document.fullscreenElement && root.requestFullscreen) {
+        Promise.resolve(root.requestFullscreen({ navigationUI: 'hide' }))
+            .then(() => window.screen?.orientation?.lock?.('landscape'))
+            .catch(() => {});
+    } else if (document.fullscreenElement && window.screen?.orientation?.lock) {
+        Promise.resolve(window.screen.orientation.lock('landscape')).catch(() => {});
+    }
+}
+function exitGameFullscreen() {
+    if (document.fullscreenElement && document.exitFullscreen) {
+        Promise.resolve(document.exitFullscreen()).catch(() => {});
+    }
+}
+
 function readCampaignSave() {
     try {
         const raw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(PREVIOUS_SAVE_KEY) || localStorage.getItem(OLD_SAVE_KEY);
@@ -885,12 +966,33 @@ function App() {
     const saved = useMemo(readCampaignSave, []);
     const [campaign, setCampaign] = useState(() => createCampaign(saved));
     const [entered, setEntered] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
+    const [isPortraitPhone, setIsPortraitPhone] = useState(() => isTouchGameDevice() && window.innerHeight > window.innerWidth);
+    const [portraitOverride, setPortraitOverride] = useState(false);
+
     const [orbitalPlay, setOrbitalPlay] = useState(saved?.orbitalPlay ?? true);
     const [mode, setMode] = useState(saved?.mode ?? 'War Room 3D');
     const [layers, setLayers] = useState({ ...INITIAL_LAYERS, ...(saved?.layers || {}) });
     const [labels, setLabels] = useState(saved?.labels ?? true);
     const [overlayOpen, setOverlayOpen] = useState(false);
     const [speed, setSpeed] = useState(0);
+    useEffect(() => {
+        const syncDisplay = () => {
+            const portrait = isTouchGameDevice() && window.innerHeight > window.innerWidth;
+            setIsPortraitPhone(portrait);
+            setIsFullscreen(Boolean(document.fullscreenElement));
+            if (!portrait) setPortraitOverride(false);
+        };
+        window.addEventListener('resize', syncDisplay);
+        window.addEventListener('orientationchange', syncDisplay);
+        document.addEventListener('fullscreenchange', syncDisplay);
+        return () => {
+            window.removeEventListener('resize', syncDisplay);
+            window.removeEventListener('orientationchange', syncDisplay);
+            document.removeEventListener('fullscreenchange', syncDisplay);
+        };
+    }, []);
+
     const [selectedId, setSelectedId] = useState('geo');
     const [drawerOpen, setDrawerOpen] = useState(true);
     const [tab, setTab] = useState('Overview');
@@ -898,6 +1000,9 @@ function App() {
     const [toast, setToast] = useState('');
     const [orbitalInfo, setOrbitalInfo] = useState(null);
     const [missionOpen, setMissionOpen] = useState(false);
+    const [missionView, setMissionView] = useState('tasking');
+    const [replayTask, setReplayTask] = useState(null);
+    const [replayPhase, setReplayPhase] = useState('acquisition');
     const [missionAsset, setMissionAsset] = useState('sat3');
     const [missionRegion, setMissionRegion] = useState('savannah');
     const [plannerEpoch, setPlannerEpoch] = useState(0);
@@ -926,6 +1031,18 @@ function App() {
         engineRef.current?.setMode('War Room 3D');
     } engineRef.current?.focusAsset(id); };
     const camera = (m) => { setMode(m); setDrawerOpen(m === 'Orbit View' ? false : drawerOpen); };
+    const enterGame = (view = 'War Room 3D') => {
+        if (isTouchGameDevice()) requestLandscapeFullscreen();
+        setEntered(true);
+        setMode(view);
+        setSpeed(0);
+        if (isTouchGameDevice()) setDrawerOpen(false);
+    };
+    const toggleFullscreen = () => {
+        if (document.fullscreenElement) exitGameFullscreen();
+        else requestLandscapeFullscreen();
+    };
+
     const turnForward = () => {
         const result = advanceCampaign(campaign);
         if (result.error) { inform(result.message); setSpeed(0); return; }
@@ -977,11 +1094,15 @@ function App() {
         else setMissionAsset(activeAsset);
         if(region&&MISSION_REGIONS[region])setMissionRegion(region);
         setPlannerEpoch(Math.max(campaign.missionEpochSeconds,Math.min(campaign.missionEpochSeconds+2*86400,engineRef.current?.orbitalSeconds??campaign.missionEpochSeconds)));
+        setMissionView('tasking');
         setMissionOpen(true);
         setSpeed(0);
     };
     const missionPlan=useMemo(()=>missionOpen?planMission(missionAsset,missionRegion,plannerEpoch,campaign.groundLevel):null,[missionOpen,missionAsset,missionRegion,plannerEpoch,campaign.groundLevel]);
     const missionOperational=programmes[missionAsset]==='deployed';
+    const groundOps=useMemo(()=>groundNetworkSnapshot(campaign),[campaign]);
+    const startReplay=(task)=>{ if(!task?.passSeconds&&task?.passSeconds!==0)return; setReplayTask({...task,replayToken:Date.now()}); setReplayPhase('acquisition'); setMissionOpen(false); setMode('War Room 3D'); setSpeed(0); setOrbitalPlay(false); };
+    useEffect(()=>{if(!replayTask)return;const timer=setInterval(()=>setReplayPhase(engineRef.current?.currentReplayFrame?.phase||'acquisition'),250);return()=>clearInterval(timer)},[replayTask]);
     const submitMission=()=>{
         const result=queueMission(campaign,missionAsset,missionRegion,plannerEpoch);
         if(!result.error)setCampaign(result.state);
@@ -994,37 +1115,53 @@ function App() {
     };
     const missionPanel=missionOpen && React.createElement('section',{className:'mission-control panel',role:'dialog','aria-label':'Orbital Mission Control'},
       React.createElement('div',{className:'mission-heading'},
-        React.createElement('div',null,
-          React.createElement('small',null,'ORBITAL OPERATIONS · SCENARIO'),
-          React.createElement('h2',null,'MISSION CONTROL')),
+        React.createElement('div',null,React.createElement('small',null,'ORBITAL OPERATIONS · FICTIONAL SCENARIO'),React.createElement('h2',null,'MISSION CONTROL')),
         React.createElement('button',{className:'mission-close',onClick:()=>setMissionOpen(false),'aria-label':'Close Mission Control'},React.createElement(Icon,{name:'x',size:19}))),
-      React.createElement('p',{className:'mission-intro'},'Task commissioned spacecraft over a broad exercise region. A geometric pass alone does not produce intelligence: collect, downlink, then analyse the product.'),
-      React.createElement('div',{className:'mission-controls'},
-        React.createElement('label',null,'SPACECRAFT',React.createElement('select',{value:missionAsset,onChange:e=>setMissionAsset(e.target.value)},
-          Object.entries(MISSION_ASSETS).map(([id,a])=>React.createElement('option',{key:id,value:id},`${id.toUpperCase()} · ${programmes[id]==='deployed'?'COMMISSIONED':'NOT DEPLOYED'}`)))),
-        React.createElement('label',null,'SCENARIO REGION',React.createElement('select',{value:missionRegion,onChange:e=>setMissionRegion(e.target.value)},
-          Object.entries(MISSION_REGIONS).map(([id,r])=>React.createElement('option',{key:id,value:id},r.short))))),
-      React.createElement('div',{className:'mission-forecast'},
-        React.createElement('div',{className:'mission-forecast-title'},React.createElement(Icon,{name:'orbit',size:16}),'14-DAY GEOMETRIC PASS FORECAST'),
-        missionPlan?.error?React.createElement('p',{className:'mission-alert'},missionPlan.error):React.createElement(React.Fragment,null,
-          React.createElement('div',{className:'mission-stats'},
-            [['PASS WINDOWS',missionPlan?.passCount??0],['NEXT PASS',formatHours(missionPlan?.hoursUntilPass)],['CLOSEST APPROACH',`${missionPlan?.closestKm} km`],['DOWNLINK',missionPlan?.receiverAvailable?'AVAILABLE':'UNAVAILABLE']].map(([l,v])=>React.createElement('div',{key:l},React.createElement('small',null,l),React.createElement('b',null,v)))),
-          React.createElement('p',{className:'mission-receiver'},`Receiving opportunity: ${missionPlan?.receiver}. ${missionPlan?.groundWaitHours==null?'No link predicted.':`Wait ${formatHours(missionPlan.groundWaitHours)} after observation.`}`)),
-        React.createElement('p',{className:'mission-note'},'Orbital elements, sensor footprint radii and ground access are hypothetical. This is a representative 14-day window inside each quarterly game turn, not verified ephemerides or real imagery.')),
-      React.createElement('div',{className:'mission-actions'},
-        React.createElement('button',{disabled:!missionOperational||!!missionPlan?.error||!missionPlan?.receiverAvailable||!!campaign.pendingEvent||ended,onClick:submitMission},
-          React.createElement(Icon,{name:'satellite',size:17}),missionOperational?'QUEUE OBSERVATION':'COMMISSION SATELLITE FIRST'),
-        React.createElement('span',null,`${(campaign.missionQueue||[]).length}/${Math.min(4,campaign.groundLevel+1)} REQUESTS · GROUND L${campaign.groundLevel}`)),
-      React.createElement('div',{className:'mission-lists'},
-        React.createElement('h3',null,'SCHEDULED TASKS'),
-        (campaign.missionQueue||[]).length===0?React.createElement('p',{className:'mission-empty'},'No requests scheduled.'):campaign.missionQueue.map(t=>React.createElement('div',{className:'mission-entry',key:t.id},React.createElement('b',null,`${t.id} · ${t.product}`),React.createElement('small',null,`${MISSION_REGIONS[t.regionId]?.short} · ${t.receiverName}`))),
-        React.createElement('h3',null,`DOWNLINKED PRODUCTS · ${metrics.unprocessed} UNPROCESSED`),
-        !(campaign.dataProducts||[]).length?React.createElement('p',{className:'mission-empty'},'No products received yet. Commission, task, and advance a quarter.'):campaign.dataProducts.slice(0,8).map(product=>React.createElement('div',{className:'mission-entry product',key:product.id},
-          React.createElement('div',null,React.createElement('b',null,`${product.id} · ${product.product}`),React.createElement('small',null,`${MISSION_REGIONS[product.regionId]?.short} · QUALITY ${product.quality}/100`)),
-          product.analysedTurn?React.createElement('span',{className:'mission-done'},'ANALYSED'):React.createElement('button',{disabled:!!campaign.pendingEvent,onClick:()=>processProduct(product.id)},'ANALYSE · ₦9B'))),
-        React.createElement('h3',null,'RECENT TASK OUTCOMES'),
-        (campaign.missionHistory||[]).slice(0,5).map(t=>React.createElement('div',{className:'mission-entry',key:t.id},React.createElement('b',null,`${t.id} · ${t.status.toUpperCase()}`),React.createElement('small',null,t.reason||`${MISSION_REGIONS[t.regionId]?.short} · ${t.receiverName}`))))
-    );
+      React.createElement('div',{className:'mission-tabs'},
+        React.createElement('button',{className:missionView==='tasking'?'active':'',onClick:()=>setMissionView('tasking')},'SATELLITE TASKING'),
+        React.createElement('button',{className:missionView==='network'?'active':'',onClick:()=>setMissionView('network')},'GROUND NETWORK')),
+      missionView==='tasking'?React.createElement(React.Fragment,null,
+        React.createElement('p',{className:'mission-intro'},'Task commissioned fictional spacecraft. An observation must reach a ground receiver and be analysed before it improves regional intelligence.'),
+        React.createElement('div',{className:'mission-controls'},
+          React.createElement('label',null,'SPACECRAFT',React.createElement('select',{value:missionAsset,onChange:e=>setMissionAsset(e.target.value)},
+            Object.keys(MISSION_ASSETS).map(id=>React.createElement('option',{key:id,value:id},`${id.toUpperCase()} · ${programmes[id]==='deployed'?'COMMISSIONED':'NOT DEPLOYED'}`)))),
+          React.createElement('label',null,'SCENARIO REGION',React.createElement('select',{value:missionRegion,onChange:e=>setMissionRegion(e.target.value)},
+            Object.entries(MISSION_REGIONS).map(([id,r])=>React.createElement('option',{key:id,value:id},r.short))))),
+        React.createElement('div',{className:'mission-forecast'},
+          React.createElement('div',{className:'mission-forecast-title'},React.createElement(Icon,{name:'orbit',size:16}),'14-DAY GEOMETRIC PASS FORECAST'),
+          missionPlan?.error?React.createElement('p',{className:'mission-alert'},missionPlan.error):React.createElement(React.Fragment,null,
+            React.createElement('div',{className:'mission-stats'},
+              [['PASSES',missionPlan?.passCount??0],['NEXT PASS',formatHours(missionPlan?.hoursUntilPass)],['CLOSEST APPROACH',`${missionPlan?.closestKm} km`],['RECEIVER',missionPlan?.receiverAvailable?'ACCESSIBLE':'UNAVAILABLE']].map(([l,v])=>React.createElement('div',{key:l},React.createElement('small',null,l),React.createElement('b',null,v)))),
+            React.createElement('p',{className:'mission-receiver'},`Scheduled receiving point: ${missionPlan?.receiver}. ${missionPlan?.groundWaitHours==null?'No predicted contact.':`Wait ${formatHours(missionPlan.groundWaitHours)} following acquisition.`}`)),
+          React.createElement('p',{className:'mission-note'},'These orbital elements, receivers and spacecraft are digital-twin assumptions, not verified real-world mission coordinates.')),
+        React.createElement('div',{className:'mission-actions'},
+          React.createElement('button',{disabled:!missionOperational||!!missionPlan?.error||!missionPlan?.receiverAvailable||!!campaign.pendingEvent||ended,onClick:submitMission},React.createElement(Icon,{name:'satellite',size:17}),missionOperational?'QUEUE OBSERVATION':'COMMISSION SATELLITE FIRST'),
+          React.createElement('span',null,`${groundOps.queued}/${groundOps.schedulingSlots} QUEUED · ${groundOps.receivingSlots} RECEIVING SLOTS`)),
+        React.createElement('div',{className:'mission-lists'},
+          React.createElement('h3',null,'SCHEDULED MISSIONS'),
+          !groundOps.queued?React.createElement('p',{className:'mission-empty'},'No requests scheduled.'):campaign.missionQueue.map(task=>React.createElement('div',{className:'mission-entry',key:task.id},
+            React.createElement('div',null,React.createElement('b',null,`${task.id} · ${task.product}`),React.createElement('small',null,`${MISSION_REGIONS[task.regionId]?.short} · ${task.receiverName}`)),
+            React.createElement('button',{className:'mission-replay-button',onClick:()=>startReplay(task)},'PREVIEW PASS'))),
+          React.createElement('h3',null,`RECEIVED DATA · ${metrics.unprocessed} UNPROCESSED`),
+          !campaign.dataProducts?.length?React.createElement('p',{className:'mission-empty'},'No received products.'):campaign.dataProducts.slice(0,8).map(product=>React.createElement('div',{className:'mission-entry product',key:product.id},
+            React.createElement('div',null,React.createElement('b',null,`${product.id} · ${product.product}`),React.createElement('small',null,`${MISSION_REGIONS[product.regionId]?.short} · QUALITY ${product.quality}/100`)),
+            product.analysedTurn?React.createElement('span',{className:'mission-done'},'ANALYSED'):React.createElement('button',{disabled:!!campaign.pendingEvent,onClick:()=>processProduct(product.id)},'ANALYSE · ₦9B'))),
+          React.createElement('h3',null,'MISSION HISTORY'),
+          !(campaign.missionHistory||[]).length?React.createElement('p',{className:'mission-empty'},'No past missions.'):campaign.missionHistory.slice(0,6).map(task=>React.createElement('div',{className:'mission-entry',key:task.id},
+            React.createElement('div',null,React.createElement('b',null,`${task.id} · ${task.status.toUpperCase()}`),React.createElement('small',null,task.reason||`${MISSION_REGIONS[task.regionId]?.short} · ${task.receiverName}`)),
+            React.createElement('button',{className:'mission-replay-button',onClick:()=>startReplay(task)},'REPLAY')))))
+      :React.createElement('div',{className:'ground-dashboard'},
+        React.createElement('p',{className:'mission-intro'},'Simulated receiving network. Upgraded capacity enables additional geometric downlink opportunities, but service reliability is shared across the network.'),
+        React.createElement('div',{className:'mission-stats'},
+          [['NETWORK',`LEVEL ${groundOps.level}`],['HEALTH',`${groundOps.health}%`],['RELIABILITY',`${groundOps.reliability}%`],['RECEIVERS',groundOps.accessibleCount],['TASK QUEUE',`${groundOps.queued}/${groundOps.schedulingSlots}`],['DOWNLINK SLOTS',groundOps.receivingSlots],['BACKLOG',groundOps.unprocessed],['PROCESSING',`${Math.round(bandwidth)} GB/s`]].map(([name,value])=>React.createElement('div',{key:name},React.createElement('small',null,name),React.createElement('b',null,value)))),
+        React.createElement('h3',null,'RECEIVING NODES'),
+        groundOps.receivers.map(station=>React.createElement('div',{className:'ground-station-row',key:station.id},
+          React.createElement('div',null,React.createElement('b',null,station.name),React.createElement('small',null,station.level===1?'Scenario access to existing receiving facilities':'Fictional future infrastructure investment')),
+          React.createElement('span',{className:station.enabled?'active':''},station.enabled?'ENABLED':`LEVEL ${station.level} REQUIRED`))),
+        React.createElement('p',{className:'mission-note'},'Receiver positions and capabilities are scenario abstractions; no live infrastructure telemetry is represented.'),
+        React.createElement('div',{className:'ground-actions'},
+          React.createElement('button',{disabled:!!campaign.pendingEvent||groundOps.level>=4||ended,onClick:()=>{const r=applyDirective(campaign,'upgrade','nasrda');if(!r.error)setCampaign(r.state);inform(r.message);}},'UPGRADE NETWORK'),
+          React.createElement('button',{disabled:!!campaign.pendingEvent||ended,onClick:()=>{const r=applyDirective(campaign,'maintain','nasrda');if(!r.error)setCampaign(r.state);inform(r.message);}},'SERVICE INFRASTRUCTURE'))));
     const clockString = `${String(Math.floor(simClock / 60)).padStart(2, '0')}:${String(simClock % 60).padStart(2, '0')}`;
     const layerLabels = [['descriptors', 'Descriptors', 'tags'], ['satellites', 'Satellites', 'satellite'], ['beams', 'Sensor Beams', 'scan-line'], ['theatres', 'Theatres', 'layers'], ['targets', 'Targets', 'crosshair'], ['stations', 'Ground Stations', 'radio-tower']];
     const badge = (value, cls = '') => React.createElement("span", { className: 'chip ' + cls }, value);
@@ -1059,8 +1196,7 @@ function App() {
                         React.createElement("div", { className: "res-value" },
                             fmtNum(bandwidth),
                             " ",
-                            React.createElement("small", null, "GB/s")))),
-                React.createElement("div", { className: "resource" },
+                            React.createElement("small", null, "GB/s")))),                React.createElement("div", { className: "resource" },
                     React.createElement("span", { className: "res-icon green" },
                         React.createElement(Icon, { name: "users", size: 21 })),
                     React.createElement("div", null,
@@ -1076,6 +1212,14 @@ function App() {
                         React.createElement("div", { className: "res-value" },
                             integrity,
                             React.createElement("small", null, "%"))))),
+            React.createElement("div", { className: "mobile-meta", "aria-label": "Campaign overview" },
+                React.createElement("span", null, `₦${Math.round(budget)}B`),
+                React.createElement("span", null, `${support}% SUPPORT`),
+                React.createElement("span", null, `Q${turn}/${MAX_TURNS}`)),
+            React.createElement("button", { className: "fullscreen-toggle", onClick: toggleFullscreen,
+                title: isFullscreen ? 'Exit fullscreen' : 'Open fullscreen and request landscape',
+                'aria-label': isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen and landscape mode' },
+                React.createElement(Icon, { name: isFullscreen ? 'minimize' : 'maximize', size: 18 })),
             React.createElement("div", { className: "timecontrols" },
                 React.createElement("div", { className: "turn-clock" },
                     React.createElement("span", null,
@@ -1096,9 +1240,28 @@ function App() {
                         React.createElement(Icon, { name: "skip-forward", size: 17 }),
                         React.createElement("span", null, "TURN"))))),
         React.createElement("main", { className: "game-stage" },
-            React.createElement(Scene3D, { engineRef: engineRef, onPick: choose, mode: mode, layers: layers, labels: labels, speed: entered ? speed : 0, commissioned: commissioned, launchFunded: launchFunded, orbitalPlay: orbitalPlay, epochSeconds: campaign.missionEpochSeconds }),
+            React.createElement(Scene3D, { engineRef: engineRef, onPick: choose, mode: mode, layers: layers, labels: labels, speed: entered ? speed : 0, commissioned: commissioned, launchFunded: launchFunded, orbitalPlay: orbitalPlay, epochSeconds: campaign.missionEpochSeconds, replayTask }),
             React.createElement("div", { className: "scene-vignette" }),
+            entered && React.createElement("nav", { className: "mobile-bottom-nav", 'aria-label': 'Mobile game controls' },
+                React.createElement("button", { onClick: () => { setDrawerOpen(false); setMissionOpen(false); setOverlayOpen(false); },
+                    className: !drawerOpen && !missionOpen && !overlayOpen ? 'active' : '', 'aria-label': 'Show map' },
+                    React.createElement(Icon, { name: 'map', size: 18 }), React.createElement('span', null, 'MAP')),
+                React.createElement("button", { onClick: () => { setDrawerOpen(v => !v); setMissionOpen(false); setOverlayOpen(false); },
+                    className: drawerOpen ? 'active' : '', 'aria-label': 'Toggle asset dossier' },
+                    React.createElement(Icon, { name: 'satellite', size: 18 }), React.createElement('span', null, 'ASSETS')),
+                React.createElement("button", { onClick: () => { if(missionOpen)setMissionOpen(false);else openMission();setOverlayOpen(false); },
+                    className: missionOpen ? 'active' : '', 'aria-label': 'Open or close mission control' },
+                    React.createElement(Icon, { name: 'satellite-dish', size: 18 }), React.createElement('span', null, 'MISSIONS')),
+                React.createElement("button", { onClick: () => {setMode(mode === 'Orbit View' ? 'War Room 3D' : 'Orbit View');setDrawerOpen(false);setMissionOpen(false);},
+                    className: mode === 'Orbit View' ? 'active' : '', 'aria-label': 'Toggle orbit view' },
+                    React.createElement(Icon, { name: 'orbit', size: 18 }), React.createElement('span', null, 'ORBIT')),
+                React.createElement("button", { onClick: () => {setOverlayOpen(v => !v);setMissionOpen(false);},
+                    className: overlayOpen ? 'active' : '', 'aria-label': 'Toggle map overlays' },
+                    React.createElement(Icon, { name: 'layers', size: 18 }), React.createElement('span', null, 'LAYERS'))),
             missionPanel,
+            replayTask&&React.createElement('div',{className:'replay-hud',role:'status'},
+                React.createElement('div',null,React.createElement('small',null,'MISSION REPLAY · FICTIONAL ORBIT'),React.createElement('strong',null,`${replayTask.id} · ${replayPhase==='acquisition'?'OBSERVATION':replayPhase==='downlink'?'GROUND DOWNLINK':'REPLAY COMPLETE'}`),React.createElement('span',null,`${MISSION_REGIONS[replayTask.regionId]?.short||'SCENARIO'} · ${replayTask.assetId.toUpperCase()}`)),
+                React.createElement('button',{onClick:()=>{setReplayTask(null);setOrbitalPlay(true)}},'EXIT REPLAY')),
             React.createElement("aside", { className: "leftpanel panel scroll-area" },
                 React.createElement("div", { className: "panel-heading" },
                     React.createElement("span", { className: "smalloverline" }, "OPERATIONAL INTELLIGENCE"),
@@ -1196,7 +1359,8 @@ function App() {
                         " ",
                         React.createElement("strong", null, "DSA \u00B7 WAR ROOM C4ISR"),
                         " ",
-                        React.createElement("span", null, "TACTICAL SIMULATION")),                    React.createElement("div", { className: "top-quick-actions" },
+                        React.createElement("span", null, "TACTICAL SIMULATION")),
+                    React.createElement("div", { className: "top-quick-actions" },
                         React.createElement('button',{className:'mission-top-button',onClick:()=>openMission()},React.createElement(Icon,{name:'satellite-dish',size:15}),' MISSIONS'),
                         React.createElement("button", { className: 'orbit-motion ' + (orbitalPlay ? 'active' : ''), title: "Orbital motion is a separate educational playback, independent of the paused strategy campaign", onClick: () => setOrbitalPlay(v => !v) },
                             React.createElement(Icon, { name: orbitalPlay ? 'pause-circle' : 'play-circle', size: 15 }),
@@ -1455,6 +1619,14 @@ function App() {
                                     React.createElement("small", null, option.description)),
                                 React.createElement("b", null, option.cost ? `₦${option.cost}B` : 'NO COST')))),
                     React.createElement("p", { className: "event-hint" }, "Every response has consequences. Advance Turn is locked until a choice is made."))),
+        entered && isPortraitPhone && !portraitOverride && React.createElement("div", { className: "rotate-device", role: "dialog", 'aria-label': 'Landscape recommended' },
+            React.createElement("div", { className: "rotate-device-content" },
+                React.createElement(Icon, { name: 'smartphone', size: 44 }),
+                React.createElement("h2", null, "Rotate for the full war room"),
+                React.createElement("p", null, "Turn your phone sideways for the 3D command table and tactical controls. Fullscreen and orientation lock depend on your browser."),
+                React.createElement("div", { className: "rotate-actions" },
+                    React.createElement("button", { onClick: toggleFullscreen }, 'TRY FULLSCREEN'),
+                    React.createElement("button", { onClick: () => setPortraitOverride(true) }, 'PLAY IN PORTRAIT')))),
         !entered && React.createElement("div", { className: "splash" },
             React.createElement("div", { className: "splash-photo" }),
             React.createElement("div", { className: "splash-overlay" }),
@@ -1462,7 +1634,7 @@ function App() {
                 React.createElement("div", { className: "splash-kicker" },
                     React.createElement("span", { className: "pulse-dot" }),
                     " NIGERIA \u00B7 2026 BASELINE / FUTURE SPACE STRATEGY ",
-                    React.createElement("span", { className: "splash-pip" }, "// BUILD 04 / CAMPAIGN")),
+                    React.createElement("span", { className: "splash-pip" }, "// BUILD 06 / MISSION OPS")),
                 React.createElement("div", { className: "splash-logo" },
                     "UNOFFICIAL STRATEGY SIMULATION ",
                     React.createElement("span", null, "\u25C8"),
@@ -1477,11 +1649,11 @@ function App() {
                     React.createElement("br", null),
                     "Develop EO, radar, communications resilience, and launch science in a cinematic strategy simulation."),
                 React.createElement("div", { className: "splash-buttons" },
-                    React.createElement("button", { className: "enter-btn", onClick: () => { setEntered(true); setSpeed(0); } },
+                    React.createElement("button", { className: "enter-btn", onClick: () => enterGame() },
                         React.createElement(Icon, { name: "play", size: 18 }),
                         saved ? " CONTINUE CAMPAIGN " : " ENTER WAR ROOM ",
                         React.createElement(Icon, { name: "arrow-up-right", size: 18 })),
-                    React.createElement("button", { className: "quiet-btn", onClick: () => { setEntered(true); setMode('Orbit View'); setSpeed(0); } },
+                    React.createElement("button", { className: "quiet-btn", onClick: () => enterGame('Orbit View') },
                         React.createElement(Icon, { name: "orbit", size: 18 }),
                         " EXPLORE ORBIT VIEW")),
                 React.createElement("div", { className: "splash-facts" },
@@ -1492,8 +1664,8 @@ function App() {
                         React.createElement("span", null, "03"),
                         " FUTURE SPACE PROGRAMMES"),
                     React.createElement("div", null,
-                        React.createElement("span", null, "30"),
-                        " CAMPAIGN TURNS"))),
+                        React.createElement("span", null, String(MAX_TURNS)),
+                        " QUARTERLY TURNS"))),
             React.createElement("div", { className: "splash-aside" },
                 React.createElement("div", { className: "side-label" }, "FEATURED ORBITAL PLATFORM"),
                 React.createElement("div", { className: "splash-sat-img" }),

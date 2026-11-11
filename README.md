@@ -22,8 +22,11 @@ Open the deployed `index.html` on GitHub Pages. Click **Enter War Room** (or **C
 - **Quarterly strategic turns:** the campaign runs from Q4 2026 through Q3 2036. Choose between domestic R&D, future spacecraft procurement, contracted imagery, network upgrades and maintenance.
 - **Real dependencies:** R&D takes multiple quarters, future satellites require ground-network capacity before commissioning, and every commissioned spacecraft adds ongoing operating costs.
 - **Strategic events:** mandatory fictional emergencies demand a choice before the next turn; decisions affect confidence, funding, reliability and research.
-- **Mission Control (v0.5):** commission an optical, radar or maritime spacecraft; open **MISSIONS**; choose an exercise region and see the next 14 days of physically propagated orbital pass opportunities. Queue observation requests, advance a strategic quarter, and see downlinked data products. Analyse each delivered product for intelligence confidence and short-lived coverage benefits.
+- **Mission Control (v0.6):** commission an optical, radar or maritime spacecraft; open **MISSIONS**; choose an exercise region and see the next 14 days of physically propagated orbital pass opportunities. Queue observation requests, advance a strategic quarter, and see downlinked data products. Analyse each delivered product for intelligence confidence and short-lived coverage benefits.
 - **Ground constraints:** a physically eligible satellite pass still needs a geometrically visible receiving opportunity, spare network capacity, and functioning infrastructure. Optical acquisitions can fail due to synthetic cloud conditions; SAR and AIS avoid optical cloud failures.
+- **Mission replays (v0.6):** preview an eligible observation from Mission Control, with orbital playback following a simulated observation and downlink window. The receiving-network panel displays hypothetical station capabilities, congestion and health.
+- **Mobile landscape cockpit:** phone gameplay offers touch orbit/zoom, a compact bottom control dock, device rotation guidance and a fullscreen toggle. Where supported, entering the game requests browser fullscreen and landscape orientation; on iPhone/Safari the browser may not allow forced rotation or fullscreen. The portrait fallback is optional.
+- **Home-screen app:** Chrome/Android can add the page to the home screen; the app manifest requests landscape/fullscreen on launch. This static app still needs an internet connection for its CDN-hosted libraries.
 - **Coverage vs. threats:** regional operational coverage depends on modelled capacity **and recent analysed products**, not on threat-pressure scores. An observation never directly neutralizes a threat.
 
 Your campaign autosaves in **this browser's localStorage** and returns when you revisit from the same browser profile. It does **not** sync across devices. Removing website data resets the local save.
@@ -50,6 +53,8 @@ node tests/smoke.cjs
 node tests/orbital.test.mjs
 node tests/strategy.test.mjs
 node tests/mission.test.mjs
+node tests/replay.test.mjs
+python tests/mobile_layout.py  # optional: requires playwright + Chromium
 ```
 
 These check syntax, deployment assets, GEO station keeping, LEO propagation, mission-pass forecasts, receiving visibility, tasking constraints, downlink results and data-product analysis. They do **not** replace real-browser functional testing or performance profiling.
@@ -99,8 +104,10 @@ tests/mission.test.mjs    End-to-end mission planning and intelligence productio
 
 ## Project status
 
-**Prototype v0.5:** Shared physical orbital model between both 3D views and mission planning; spacecraft pass forecasts over broad fictional exercise regions; geocentric ground-receiver visibility; queued mission requests; capacity- and health-constrained downlinks; optical cloud scenarios; acquired products; subsequent intelligence analysis; capability and actual delivered observations as distinct coverage measurements; automatic V2 → V3 local save migration; regression tests and GitHub Pages deployment.
+**Prototype v0.6:** Shared physical orbital model between both 3D views and mission planning; spacecraft pass forecasts over broad fictional exercise regions; geocentric ground-receiver visibility; queued mission requests; capacity- and health-constrained downlinks; optical cloud scenarios; acquired products; subsequent intelligence analysis; capability and actual delivered observations as distinct coverage measurements; automatic V2 → V3 local save migration; regression tests and GitHub Pages deployment.
 
-**Next:** browser integration testing, mission tutorial, richer scene-to-planner map markers, configurable pass window and mission priority, confidence decay/decision effects, quality settings and verified geography.
+**Next:** live-browser WebGL end-to-end testing, mission tutorial, data queues, better input accessibility, scenario pacing, more responsive navigation, improved graphics quality controls and verified geography.
+
+**Automated checks:** Unit/syntax tests plus a Playwright mobile CSS layout check at 844×390, 667×375 and 390×844. The mobile test isolates CSS from the game runtime because local browser navigation is blocked in the current development environment. It does not certify full-screen/orientation permissions on particular devices. GitHub Actions validates each release.
 
 **Not affiliated with or endorsed by Nigeria's Defence Space Administration, NASRDA, NIGCOMSAT, or the Armed Forces.**
